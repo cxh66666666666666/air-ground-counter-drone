@@ -92,7 +92,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **spec**：`.trae/specs/w2-sim-world/`
 
 ### W3 · 空中链路
-- **目标**：PX4 uXRCE-DDS 链路 + LQR 轨迹跟踪 + 跟随（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)）。
+- **目标**：PX4 uXRCE-DDS 链路 + LQR 轨迹跟踪 + 跟随（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)）；PX4 本体以 [toolchain 外部依赖](./adr/0012-px4-body-as-toolchain-dependency.md) 形态使用。
 - **产出**：起飞 / 悬停 / 接管闭环。
 - **验收**：悬停稳定、Offboard 可切、8 字轨迹恒速。
 - **挂载**：C1（8 字恒速）、C10（跟随默认关闭 / 新鲜度冻结）。

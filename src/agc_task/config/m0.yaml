@@ -55,7 +55,7 @@ scenario_reset:
     car_start_topic: "/agc/scenario/car_start"
     car_x: -4.0
     car_y: -3.0
-    car_z: 0.05
+    car_z: 0.010
     car_yaw: 0.0
     target_x: 6.5
     target_y: 2.5

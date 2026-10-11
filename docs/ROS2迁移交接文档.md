@@ -82,6 +82,8 @@
 | Nav2 范围 | 模式全覆盖 · 进程按域选用 | [ADR-0003](./adr/0003-nav2-pattern-complete-absorption.md) |
 | RL 角色 | 地面主控(c2)；Nav2 作安全层与离线基线 | [ADR-0004](./adr/0004-rl-primary-controller-nav2-safety-layer.md) |
 | 地面驱动 | 真实物理（GZ DiffDrive），弃 `kinematic_sim` | [ADR-0010](./adr/0010-ground-drive-real-physics.md) |
+| 节点语言 | C++ 实时域 / Python RL 域 | [ADR-0011](./adr/0011-node-language-policy.md) |
+| PX4 本体形态 | `toolchain/` 外部依赖（pin v1.15.4）；`px4_msgs` 内联 `src/` | [ADR-0012](./adr/0012-px4-body-as-toolchain-dependency.md) |
 | Nav2 吸收（代码层） | 交叉原则，W1–W6 吸收矩阵 | [ADR-0008](./adr/0008-nav2-paradigm-absorption-as-code-principle.md) |
 | 实机 / 纯仿真 | 纯仿真优先，预留接口 | [ADR-0009](./adr/0009-sim-first-with-hardware-hooks.md) |
 | 文档真源分层 | 每类信息一个家 + 稳定锚点引用 | [ADR-0002](./adr/0002-docs-source-of-truth-layering.md) |
