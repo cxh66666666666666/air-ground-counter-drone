@@ -48,6 +48,14 @@
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
 
+# 目标无人机速度命令（W2-interception，R9；ROS→GZ）
+# 目标挂 GZ VelocityControl，外部经此话题脚本化驱动（driver / 干扰注入节点属 W6）
+- ros_topic_name: "/agc/sim/target_cmd_vel"
+  gz_topic_name: "/model/intruder_uav/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
 # 注：场景复位服务 /world/agc_world/set_pose 的桥**不在本 YAML 内**。
 # 本机 ros_gz_bridge(1.0.24) 的 YAML 服务条目（service_name/gz_req_type_name/
 # gz_rep_type_name）在 factory 侧会因空 topic 名崩溃；该服务改由 world_bringup.launch.py

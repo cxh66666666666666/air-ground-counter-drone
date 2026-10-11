@@ -61,6 +61,8 @@ def generate_launch_description():
         DeclareLaunchArgument('car_body_width', default_value=str(car_m['body_width'])),
         DeclareLaunchArgument('car_body_height', default_value=str(car_m['body_height'])),
         DeclareLaunchArgument('car_body_mass', default_value=str(car_m['body_mass'])),
+        DeclareLaunchArgument('car_capture_net_radius', default_value=str(car_m['capture_net_radius'])),
+        DeclareLaunchArgument('car_payload_mass', default_value=str(car_m['payload_mass'])),
         # 目标
         DeclareLaunchArgument('target_x', default_value=str(tgt_s['x'])),
         DeclareLaunchArgument('target_y', default_value=str(tgt_s['y'])),
@@ -114,6 +116,8 @@ def generate_launch_description():
         ' body_width:=', LaunchConfiguration('car_body_width'),
         ' body_height:=', LaunchConfiguration('car_body_height'),
         ' body_mass:=', LaunchConfiguration('car_body_mass'),
+        ' capture_net_radius:=', LaunchConfiguration('car_capture_net_radius'),
+        ' payload_mass:=', LaunchConfiguration('car_payload_mass'),
     ])
     spawn_car = Node(
         package='ros_gz_sim', executable='create', output='screen',

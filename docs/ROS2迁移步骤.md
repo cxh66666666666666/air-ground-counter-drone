@@ -37,10 +37,10 @@
 | **W2** | 仿真世界与模型 | W0 | C3·C7(场景层) | ✅ |
 | **W3** | 空中链路 | W2 | C1·C10 | ☐ |
 | **W4** | 感知与融合 | W2 | — | ☐ |
-| **W5** | 地面导航与安全层 | W2·W4·W7 | C6 | ☐ |
+| **W5** | 地面导航与安全层 | W2·W4 | C6 | ☐ |
 | **W6** | 任务与评估 | W5 | C4·C5·C7·C8·C9 | ☐ |
-| **W7** | RL 平台 | W2 | — | ☐ |
-| **W8** | 对照与冻结 | W6·W7 | C1–C10（容差） | ☐ |
+| **W7** | RL 平台 | W2 | — | ☐（后续） |
+| **W8** | 对照与冻结 | W6·W7 | C1–C10（容差） | ☐（后续） |
 
 ### 依赖图
 
@@ -50,9 +50,11 @@ W0 ─┬─> W1 ─────────┐
     └─> W2 ─┬───────┘
             ├─> W3 空中链路
             └─> W4 感知融合 ─┐
-                             ├─> W5 地面导航 ──> W6 任务评估 ──┬─> W8 对照冻结
-W7 RL 平台 ─────────────────┘（提供策略）                      ┘
+                             └─> W5 地面导航 ──> W6 任务评估 ──> 〔本次出口：ADR-0016〕
+（后续）W7 RL 平台 · W8 对照冻结
 ```
+
+> **本次范围**：以 **W6 为出口**；W7 / W8 归"项目结束后后续"（[ADR-0014](./adr/0014-research-mainline-mobile-interception-system.md)、[ADR-0016](./adr/0016-execution-scope-exit-w6.md)）。W5 的地面主控**维持 [ADR-0004](./adr/0004-rl-primary-controller-nav2-safety-layer.md)**，本次以 **RL 最小版**落地。
 
 ---
 
@@ -84,7 +86,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **spec**：`.trae/specs/m0-walking-skeleton/`
 
 ### W2 · 仿真世界与模型
-- **目标**：`agc_world` + 车 / UAV 模型迁 GZ Sim；`ros_gz` 桥；传感器链路。地面车为**真实物理**驱动（[ADR-0010](./adr/0010-ground-drive-real-physics.md)）。**分段交付**：W2-min（世界 + 车 + target 被动模型 + 桥最小集）→ W2-full（传感器链路 / costmap 输入数据 / 世界打磨）。
+- **目标**：`agc_world` + 车 / UAV 模型迁 GZ Sim；`ros_gz` 桥；传感器链路。地面车为**真实物理**驱动（[ADR-0010](./adr/0010-ground-drive-real-physics.md)）。**分段交付**：W2-min（世界 + 车 + target 被动模型 + 桥最小集）→ W2-full（传感器链路 / costmap 输入数据 / 世界打磨）→ W2-interception（目标可控化 + 地面拦截载荷模型）。**拦截相关**：`intruder_uav` 升级为**可脚本化 / 可控**模型、`agc_car` 增**拦截载荷**（捕获网面 + 干扰载荷）模型（供 W6 干扰注入与捕获裁决，[ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md)、[ADR-0016](./adr/0016-execution-scope-exit-w6.md)）。
 - **产出**：可加载的世界与模型、桥配置（W2-min 供 M0；W2-full 供 W4/W5）。
 - **验收**：无头 / GUI 均可起；`/clock` 同步；点云话题有数据（QoS 见 [风险](#risks)）。
 - **挂载**：C3（非无头验收）、C7（出生间距，场景层）。
@@ -92,10 +94,10 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **spec**：`.trae/specs/w2-sim-world/`
 
 ### W3 · 空中链路
-- **目标**：PX4 uXRCE-DDS 链路 + LQR 轨迹跟踪 + 跟随（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)）；PX4 本体以 [toolchain 外部依赖](./adr/0012-px4-body-as-toolchain-dependency.md) 形态使用。
+- **目标**：PX4 uXRCE-DDS 链路 + LQR 轨迹跟踪 + **对目标常开 standoff 跟踪（含自避障）**（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)、[ADR-0017](./adr/0017-air-ground-collaboration-loop.md)）；PX4 本体以 [toolchain 外部依赖](./adr/0012-px4-body-as-toolchain-dependency.md) 形态使用。
 - **产出**：起飞 / 悬停 / 接管闭环。
 - **验收**：悬停稳定、Offboard 可切、8 字轨迹恒速。
-- **挂载**：C1（8 字恒速）、C10（跟随默认关闭 / 新鲜度冻结）。
+- **挂载**：C1（8 字恒速）、C10（**跟踪常开** / 安全间距 / 新鲜度冻结）。
 - **Nav2 吸收点**：**lifecycle managed node**、pluginlib、QoS 标定。
 - **spec**：`.trae/specs/w3-air-link/`
 
@@ -107,7 +109,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **spec**：`.trae/specs/w4-perception-fusion/`
 
 ### W5 · 地面导航与安全层
-- **目标**：`RL → cmd_vel → collision_monitor → /agc/ground/cmd_vel`（[ADR-0004](./adr/0004-rl-primary-controller-nav2-safety-layer.md)）。
+- **目标**：`RL → cmd_vel → collision_monitor → /agc/ground/cmd_vel`（[ADR-0004](./adr/0004-rl-primary-controller-nav2-safety-layer.md)；本次为 **RL 最小版**）。
 - **产出**：RL 主控链路 + Nav2 `collision_monitor` 安全层 + 离线对照基线接入。
 - **验收**：全程仅 [唯一执行口](./ROS2迁移交接文档.md#execution-port) 一个；**无第二命令者**；安全层触发可复现。
 - **挂载**：C6（安全滤波器真实逃逸能力）。
@@ -116,7 +118,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **spec**：`.trae/specs/w5-ground-nav-safety/`
 
 ### W6 · 任务与评估
-- **目标**：`task_manager`、`agc_run_logger`、12 个场景、评估口径；修复已知竞态（契约 [不可回退教训](./ROS2迁移交接文档.md#lessons)）。
+- **目标**：`task_manager`、`agc_run_logger`、12 个场景、评估口径；修复已知竞态（契约 [不可回退教训](./ROS2迁移交接文档.md#lessons)）。**拦截裁决**（物理捕获判据 + 行为级干扰注入）与"捕获 / 干扰"**终态语义扩展**（[ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md)），并消解契约 [终态语义](./ROS2迁移交接文档.md#terminal-semantics) 的旧口径。
 - **产出**：状态机 + 日志 + 场景 + 评估脚本。
 - **验收**：终态语义正确；报告含 `shield_infeasible_rate` 与 `reset_failure_rate`。
 - **挂载**：C4（超时算失败）、C5（相位复位 t=0）、C7（出生间距 / 复位重试）、C8（终态语义）、C9（报告指标）。
@@ -124,14 +126,14 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **未决**：`task_manager` 架构（自研状态机 vs Nav2 BT）—— 在 W6 spec 内定夺。
 - **spec**：`.trae/specs/w6-task-eval/`
 
-### W7 · RL 平台（重点优化）
+### W7 · RL 平台（**后续**，不在本次出口）
 - **目标**：策略、训练 / 评估流水线、论文产线。
 - **产出**：可复现的训练与评估。
 - **验收**：同 seed 可复现；指标齐全。
 - **未决**：算法 / 环境 / 指标 / 论文方向 —— 在 W7 spec 内定夺。
 - **spec**：`.trae/specs/w7-rl/`
 
-### W8 · 对照与冻结
+### W8 · 对照与冻结（**后续**，不在本次出口）
 - **目标**：新旧实现同场景、同种子各跑 N 次；出对比报告；ROS1 归档只读。
 - **验收**：频率 / 数值差异在容差内；终态语义一致。
 - **挂载**：C1–C10 全量容差复核。
@@ -155,7 +157,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 | C7 | 出生间距 ≥2.4m；复位失败 ≤3 次不占预算 | W2（场景层）· W6 |
 | C8 | 终态"抵近并持续跟踪"；`SUCCESS` 不得称"拦截完成" | W6 |
 | C9 | 报告含 `shield_infeasible_rate`、`reset_failure_rate` | W6 |
-| C10 | 跟随默认关闭；`ref_max_age_s=0.5`、`confidence≥0.5` 冻结 | W3 |
+| C10 | 无人机跟踪常开；安全间距；`ref_max_age_s=0.5`、`confidence≥0.5` 冻结 | W3 |
 
 ---
 

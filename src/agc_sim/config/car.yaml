@@ -7,7 +7,7 @@
 agc_sim:
   car:
     # spawn 位姿（world 系，ENU）。对齐旧树 car_start = [-4 -3 ...]；
-    # z 取 TB3 base_link 触地高度（轮半径 0.033 − 轮心局部 z 0.023 = 0.010）。
+    # z 取 TB3 车身原点触地高度（轮半径 0.033 − 轮心局部 z 0.023 = 0.010）。
     spawn:
       x: -4.0
       y: -3.0
@@ -24,3 +24,7 @@ agc_sim:
       body_width: 0.265
       body_height: 0.089
       body_mass: 2.0
+      # 拦截载荷（W2-interception，R10）：轻量附件、无碰撞、不改动 DiffDrive 标定
+      # 捕获网面半径（m）→ 直径 2 m；干扰载荷/网面附件质量（kg，可忽略）
+      capture_net_radius: 1.0
+      payload_mass: 0.05

@@ -26,11 +26,14 @@
   <xacro:arg name="body_width" default="0.265"/>
   <xacro:arg name="body_height" default="0.089"/>
   <xacro:arg name="body_mass" default="2.0"/>
+  <!-- 拦截载荷（W2-interception，R10）：轻量附件、无碰撞；参数落 config -->
+  <xacro:arg name="capture_net_radius" default="1.0"/>
+  <xacro:arg name="payload_mass" default="0.05"/>
 
   <model name="agc_car">
     <static>false</static>
 
-    <!-- 车体（基座：TB3 base_link；原点约在轮轴高度） -->
+    <!-- 车体（基座：TB3 车身 link；原点约在轮轴高度） -->
     <link name="car/base_link">
       <inertial>
         <pose>0 0 0.048 0 0 0</pose>
@@ -145,6 +148,34 @@
       </sensor>
     </link>
 
+    <!-- 拦截载荷（W2-interception，R10）：轻量附件、**无碰撞**、不改动 DiffDrive 标定 -->
+    <!-- 捕获网面：直径 2 m 的圆面，法线朝前（+x），供 W6 物理捕获"穿越判据"使用 -->
+    <link name="car/capture_net">
+      <pose>0.45 0 0.10 0 0 0</pose>
+      <inertial>
+        <mass>$(arg payload_mass)</mass>
+        <inertia><ixx>1e-4</ixx><iyy>1e-4</iyy><izz>1e-4</izz></inertia>
+      </inertial>
+      <visual name="capture_net_visual">
+        <pose>0 0 0 0 1.5708 0</pose>
+        <geometry><cylinder><radius>$(arg capture_net_radius)</radius><length>0.01</length></cylinder></geometry>
+        <material><ambient>0.1 0.5 0.9 0.5</ambient><diffuse>0.1 0.5 0.9 0.5</diffuse></material>
+      </visual>
+    </link>
+
+    <!-- 干扰载荷：行为级电子干扰发射器（EMI 不建模）；行为接口属 W6 -->
+    <link name="car/jammer">
+      <pose>-0.10 0 0.16 0 0 0</pose>
+      <inertial>
+        <mass>$(arg payload_mass)</mass>
+        <inertia><ixx>1e-4</ixx><iyy>1e-4</iyy><izz>1e-4</izz></inertia>
+      </inertial>
+      <visual name="jammer_visual">
+        <geometry><cylinder><radius>0.03</radius><length>0.08</length></cylinder></geometry>
+        <material><ambient>0.8 0.6 0.0 1</ambient><diffuse>0.9 0.7 0.0 1</diffuse></material>
+      </visual>
+    </link>
+
     <!-- 关节（基座布局；轮用 revolute，顺时针/逆时针由 DiffDrive 驱动） -->
     <joint name="left_wheel_joint" type="revolute">
       <pose>0 0.144 0.023 0 0 0</pose>
@@ -169,6 +200,14 @@
     <joint name="lidar_joint" type="fixed">
       <parent>car/base_link</parent>
       <child>car/lidar_link</child>
+    </joint>
+    <joint name="capture_net_joint" type="fixed">
+      <parent>car/base_link</parent>
+      <child>car/capture_net</child>
+    </joint>
+    <joint name="jammer_joint" type="fixed">
+      <parent>car/base_link</parent>
+      <child>car/jammer</child>
     </joint>
 
     <!-- 差速驱动（真实物理；限幅沿用 TB3 基座量级） -->

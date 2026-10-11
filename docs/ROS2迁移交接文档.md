@@ -56,7 +56,7 @@
 7. 场景生成须保证**出生间距 ≥2.4m**；复位失败最多重试 3 次且不占 episode 预算。
 8. 状态机终态为"抵近并持续跟踪"，`SUCCESS` **不得**表述为"拦截完成"。
 9. 评估报告须含 `shield_infeasible_rate` 与 `reset_failure_rate`。
-10. 无人机跟随默认关闭（`--follow` 开启）；跟随要求目标新鲜（`ref_max_age_s=0.5`）且 `confidence≥0.5`，过期即冻结。
+10. **无人机对目标的跟踪常开**（非可选；原"跟随默认关闭"作废）：保持**安全间距**（不紧贴），目的为**不丢失目标**；跟踪要求目标新鲜（`ref_max_age_s=0.5`）且 `confidence≥0.5`，过期即冻结。无人机同时负责**自身飞行安全**（自避障）。
 
 > **回归挂载**：每条约束挂到"首次使其可验证"的 workstream，映射表见 Runbook 的 `#hard-constraint-mounting`。
 
@@ -64,7 +64,7 @@
 ## 7. 终态语义
 
 - 地面任务终态统一为 `TRACKING_SUCCESS`（"抵近并持续跟踪"）。
-- 阶段 A **禁用** `INTERCEPT_CONFIRMED`；任何文档/报告**不得**把 `SUCCESS` 表述为"拦截完成"。
+- 拦截相关终态（如 `INTERCEPT_CONFIRMED`）的**启用条件与命名在 W6 定夺**（见 [ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md)）；**在其定案前**，任何文档/报告**不得**把 `SUCCESS` 表述为"拦截完成"。
 
 <a id="lessons"></a>
 ## 8. 不可回退教训
@@ -89,6 +89,11 @@
 | 文档真源分层 | 每类信息一个家 + 稳定锚点引用 | [ADR-0002](./adr/0002-docs-source-of-truth-layering.md) |
 | 执行组织 | 职责域 workstream（W0–W8） | [ADR-0006](./adr/0006-domain-workstream-organization.md) |
 | 实验产物 | 唯一落点 `experiments/<campaign>/<run_id>/` | [ADR-0007](./adr/0007-experiment-artifacts-convention.md) |
+| 定位（重写即交付物） | 软著 / 平台；论文产出于纯仿真 | [ADR-0013](./adr/0013-rewrite-as-deliverable-sim-only.md) |
+| 研究主线 | 移动式主动拦截系统（D 主 / A 核）；RL·融合归后续 | [ADR-0014](./adr/0014-research-mainline-mobile-interception-system.md) |
+| 拦截范围 | 物理捕获判据 + 行为级电子干扰（EMI 不建模） | [ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md) |
+| 执行范围出口 | 到 W6；W7 / W8 归后续；拦截落 W2 / W6 | [ADR-0016](./adr/0016-execution-scope-exit-w6.md) |
+| 空地协同口径 | UAV 常开 standoff 跟踪 + 自保；地面自主规划 | [ADR-0017](./adr/0017-air-ground-collaboration-loop.md) |
 | `task_manager` 架构 | **未决**，延后至 W6 spec | — |
 
 ---

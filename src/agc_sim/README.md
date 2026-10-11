@@ -65,6 +65,11 @@ SceneBroadcaster → Sensors`），与 Nav2 官方 `tb3_sandbox` 写法一致。
 
 **实测**：`/agc/sim/car_points`（`sensor_msgs/PointCloud2`）@ **~10 Hz**，GUI 与无头均正常；M0 不受影响。
 
+## 拦截相关模型（W2-interception）
+
+- **可控目标**（`intruder_uav`，R9）：挂 GZ `VelocityControl`，外部经 gz `/model/intruder_uav/cmd_vel`（ROS `/agc/sim/target_cmd_vel`）发 `Twist` 即可脚本化驱动（保持失重、半运动学）。**driver / 干扰注入节点属 W6**（ADR-0016）。
+- **地面拦截载荷**（`agc_car`，R10）：`car/capture_net`（直径 2 m 圆面，法线 `+x`，供 W6 物理捕获"穿越判据"）与 `car/jammer`（行为级干扰发射器）。二者均为**轻量、无 collision** 附件，参数（`capture_net_radius` / `payload_mass`）落 `config/car.yaml` 并由 launch 单一设置；**捕获裁决与干扰行为属 W6**（ADR-0015）。
+
 ## 物理与驱动
 
 - 物理引擎 `dart`（GZ Sim 8/Harmonic 不支持 ODE）；`max_step_size=0.004`、`real_time_update_rate=250`，对齐旧树步长行为。
