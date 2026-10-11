@@ -3,7 +3,7 @@
 > **角色**：本项目唯一的**契约真源（Contract Source of Truth）**（见 [GLOSSARY](../GLOSSARY.md)）。承载不可变约束：命名空间与坐标系、唯一执行口、参数入口、接口语义、硬约束、终态语义、不可回退教训。
 > **不承载**：路线图、重构步骤、风险与排期 —— 见《步骤文档》(Runbook) 与 `.trae/specs/`。
 > **引用约定**：跨文档引用一律用**稳定锚点**（`<文件>#<锚点>`），**禁止** §章节号（见 [ADR-0002](./adr/0002-docs-source-of-truth-layering.md)）。
-> **基线**：ROS1(Noetic) 参考实现已冻结为只读归档（`anti_drone_agc_workspace/`），仅供 W8 行为对照，**不作代码来源**（见 [ADR-0001](./adr/0001-greenfield-ros2-rewrite.md)）。
+> **基线**：ROS1(Noetic) 参考实现已冻结为只读归档（`reference/old_ros1/`），仅供 W8 行为对照，**不作代码来源**（见 [ADR-0001](./adr/0001-greenfield-ros2-rewrite.md)）。
 
 ---
 

@@ -60,8 +60,9 @@ W7 RL 平台 ─────────────────┘（提供策�
 ## 3. Workstream 卡片
 
 ### W0 · 仓库与工程规范
-- **目标**：确定目录骨架、包边界、命名与产物规范、git 与 `.gitignore`、CI 基线。
-- **产出**：目录骨架 + 规范文档 + git 初始化 + `.gitignore`。
+- **目标**：确定目录骨架、包边界、命名与产物规范、git 与 `.gitignore`。
+- **产出**：目录骨架 + 规范文档 + git 初始化 + `.gitignore` + 旧树归档至 `reference/old_ros1/`。
+- **非目标**：CI/CD 流水线（另立 workstream）。
 - **验收**：`colcon list` 只列出预期包；`experiments/**/config/` 可入库而其余被忽略（[ADR-0007](./adr/0007-experiment-artifacts-convention.md)）。
 - **Nav2 吸收点**：参数声明规范、接口分层约定。
 - **spec**：`.trae/specs/w0-repo-and-conventions/`
