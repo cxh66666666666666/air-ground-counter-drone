@@ -1,0 +1,54 @@
+std_msgs/Header header                 # 该通道数组发布时刻；frame_id=world
+	builtin_interfaces/Time stamp
+		int32 sec
+		uint32 nanosec
+	string frame_id
+string sensor_id                       # 观测通道标识
+TargetObservation[] targets            # 本拍该通道的目标观测（无则空）
+	std_msgs/Header header                 #
+		builtin_interfaces/Time stamp
+			int32 sec
+			uint32 nanosec
+		string frame_id
+	string target_id                       #
+	string sensor_id                       #
+	geometry_msgs/PoseWithCovariance pose  #
+		Pose pose
+			Point position
+				float64 x
+				float64 y
+				float64 z
+			Quaternion orientation
+				float64 x 0
+				float64 y 0
+				float64 z 0
+				float64 w 1
+		float64[36] covariance
+	float32 confidence                     #
+	uint32 obs_seq                         #
+ObstacleObservation[] obstacles        # 本拍该通道的障碍观测（无则空）
+	std_msgs/Header header                 #
+		builtin_interfaces/Time stamp
+			int32 sec
+			uint32 nanosec
+		string frame_id
+	string obstacle_id                     #
+	string sensor_id                       #
+	geometry_msgs/PoseWithCovariance pose  #
+		Pose pose
+			Point position
+				float64 x
+				float64 y
+				float64 z
+			Quaternion orientation
+				float64 x 0
+				float64 y 0
+				float64 z 0
+				float64 w 1
+		float64[36] covariance
+	geometry_msgs/Vector3 size             #
+		float64 x
+		float64 y
+		float64 z
+	float32 confidence                     #
+	uint32 obs_seq                         #

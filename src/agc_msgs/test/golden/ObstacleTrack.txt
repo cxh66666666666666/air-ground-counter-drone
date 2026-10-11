@@ -1,0 +1,22 @@
+std_msgs/Header header                 # 最后一次真实观测时刻；frame_id=world
+	builtin_interfaces/Time stamp
+		int32 sec
+		uint32 nanosec
+	string frame_id
+string obstacle_id                     # 障碍标识
+geometry_msgs/Pose pose                # world 系障碍中心位姿
+	Point position
+		float64 x
+		float64 y
+		float64 z
+	Quaternion orientation
+		float64 x 0
+		float64 y 0
+		float64 z 0
+		float64 w 1
+geometry_msgs/Vector3 size             # 障碍尺寸 (m)，融合后为保守外扩值
+	float64 x
+	float64 y
+	float64 z
+float32 confidence                     # 融合置信度
+string source                          # air_fusion
