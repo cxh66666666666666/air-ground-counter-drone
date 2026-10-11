@@ -1,0 +1,214 @@
+<?xml version="1.0"?>
+<!--
+  agc_car —— 地面车模型（真实物理，ADR-0010；W2-min）
+
+  实现说明（全新重写，HOW 不继承旧树）：
+    * 差速两驱动轮 + 前后 2 caster；挂 gz-sim DiffDrive 插件，由物理引擎产生运动。
+    * 参数全部经 xacro 注入，默认值来自 agc_sim/config/car.yaml，由 launch 单一设置。
+    * link 命名遵循契约：机体系为 car/base_link（禁止裸 base_link）。
+    * base_link 原点取轮轴高度；spawn z = wheel_radius 使车轮触地。
+    * 几何/质量沿用旧树 agc_car 的碰撞盒口径（0.44×0.34×0.16、mass 2.0）作为行为事实；
+      visual 改用基本几何（网格细化属 W2-full，不复制旧资产）。
+-->
+<sdf version="1.8" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="wheel_separation" default="0.32"/>
+  <xacro:arg name="wheel_radius" default="0.05"/>
+  <xacro:arg name="wheel_width" default="0.03"/>
+  <xacro:arg name="max_wheel_torque" default="20.0"/>
+  <xacro:arg name="max_wheel_acceleration" default="1.0"/>
+  <xacro:arg name="body_length" default="0.44"/>
+  <xacro:arg name="body_width" default="0.34"/>
+  <xacro:arg name="body_height" default="0.16"/>
+  <xacro:arg name="body_mass" default="2.0"/>
+
+  <model name="agc_car">
+    <static>false</static>
+
+    <!-- 车体（原点在轮轴高度） -->
+    <link name="car/base_link">
+      <inertial>
+        <mass>$(arg body_mass)</mass>
+        <inertia>
+          <ixx>0.025</ixx>
+          <iyy>0.025</iyy>
+          <izz>0.04</izz>
+        </inertia>
+      </inertial>
+      <collision name="body_collision">
+        <pose>0 0 0.05 0 0 0</pose>
+        <geometry>
+          <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
+        </geometry>
+      </collision>
+      <visual name="body_visual">
+        <pose>0 0 0.05 0 0 0</pose>
+        <geometry>
+          <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.3 0.3 0.3 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- 左驱动轮（link 不旋转；仅几何旋 90° 使圆柱轴沿 y，关节轴才正确） -->
+    <link name="car/left_wheel">
+      <pose>0 0.16 0 0 0 0</pose>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia><ixx>0.0003</ixx><iyy>0.0003</iyy><izz>0.0003</izz></inertia>
+      </inertial>
+      <collision name="collision">
+        <pose>0 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
+        <surface>
+          <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <pose>0 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+    </link>
+
+    <!-- 右驱动轮 -->
+    <link name="car/right_wheel">
+      <pose>0 -0.16 0 0 0 0</pose>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia><ixx>0.0003</ixx><iyy>0.0003</iyy><izz>0.0003</izz></inertia>
+      </inertial>
+      <collision name="collision">
+        <pose>0 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
+        <surface>
+          <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <pose>0 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+    </link>
+
+    <!-- 前 caster（被动支撑） -->
+    <link name="car/front_caster">
+      <pose>0.18 0 -0.03 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry><sphere><radius>0.02</radius></sphere></geometry>
+        <surface><friction><ode><mu>0.0</mu><mu2>0.0</mu2></ode></friction></surface>
+      </collision>
+      <visual name="visual">
+        <geometry><sphere><radius>0.02</radius></sphere></geometry>
+        <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
+      </visual>
+    </link>
+
+    <!-- 后 caster（被动支撑） -->
+    <link name="car/rear_caster">
+      <pose>-0.18 0 -0.03 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry><sphere><radius>0.02</radius></sphere></geometry>
+        <surface><friction><ode><mu>0.0</mu><mu2>0.0</mu2></ode></friction></surface>
+      </collision>
+      <visual name="visual">
+        <geometry><sphere><radius>0.02</radius></sphere></geometry>
+        <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
+      </visual>
+    </link>
+
+    <!-- 关节（显式 pose 使关节帧 = 轮心，轴沿 y） -->
+    <joint name="left_wheel_joint" type="revolute">
+      <pose>0 0.16 0 0 0 0</pose>
+      <parent>car/base_link</parent>
+      <child>car/left_wheel</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit><lower>-1e16</lower><upper>1e16</upper></limit>
+      </axis>
+    </joint>
+    <joint name="right_wheel_joint" type="revolute">
+      <pose>0 -0.16 0 0 0 0</pose>
+      <parent>car/base_link</parent>
+      <child>car/right_wheel</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit><lower>-1e16</lower><upper>1e16</upper></limit>
+      </axis>
+    </joint>
+    <joint name="front_caster_joint" type="fixed">
+      <parent>car/base_link</parent>
+      <child>car/front_caster</child>
+    </joint>
+    <joint name="rear_caster_joint" type="fixed">
+      <parent>car/base_link</parent>
+      <child>car/rear_caster</child>
+    </joint>
+
+    <!-- 3D 激光（Velodyne 语义；W2-full 传感器链路）——挂车体，供 W4 costmap / W5 collision_monitor -->
+    <link name="car/lidar_link">
+      <pose>0 0 0.20 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia><ixx>1e-4</ixx><iyy>1e-4</iyy><izz>1e-4</izz></inertia>
+      </inertial>
+      <sensor name="lidar3d" type="gpu_lidar">
+        <topic>lidar/points</topic>
+        <update_rate>10</update_rate>
+        <always_on>1</always_on>
+        <visualize>false</visualize>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.14159265</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>16</samples>
+              <min_angle>-0.261799</min_angle>
+              <max_angle>0.261799</max_angle>
+            </vertical>
+          </scan>
+          <range><min>0.2</min><max>20.0</max></range>
+        </lidar>
+      </sensor>
+    </link>
+    <joint name="lidar_joint" type="fixed">
+      <parent>car/base_link</parent>
+      <child>car/lidar_link</child>
+    </joint>
+
+    <!-- 差速驱动插件（真实物理） -->
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>$(arg wheel_separation)</wheel_separation>
+      <wheel_radius>$(arg wheel_radius)</wheel_radius>
+      <max_wheel_torque>$(arg max_wheel_torque)</max_wheel_torque>
+      <max_wheel_acceleration>$(arg max_wheel_acceleration)</max_wheel_acceleration>
+      <odom_publish_frequency>30</odom_publish_frequency>
+    </plugin>
+
+    <!-- 世界真值位姿发布（供 M0 的 ground_odom_adapter 取 world 位姿；teleport 安全）。
+         update_frequency 使位姿按固定频率发布（否则仅在位姿变化时发布，静止车无输出）。 -->
+    <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
+      <publish_model_pose>true</publish_model_pose>
+      <publish_link_pose>false</publish_link_pose>
+      <update_frequency>30</update_frequency>
+    </plugin>
+
+  </model>
+</sdf>

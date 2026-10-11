@@ -1,0 +1,108 @@
+<?xml version="1.0" ?>
+<!--
+  agc_world —— AGC 空地协同的唯一世界（GZ Sim / Harmonic，W2-min）
+
+  设计要点（对齐旧树行为事实，WHAT；实现为 GZ Sim 全新重写，HOW 不继承）：
+    * 单一世界：障碍在运行期由场景复位 spawn / toggle，不维护"静态/动态"两份 world。
+    * 基准坐标系 ENU（+x 东、+y 北、+z 上），单位 m / m/s / rad。
+    * 地面与光源**内联**定义（不依赖 model://sun / ground_plane 资源），保证自包含。
+    * 物理引擎为 dart（GZ Sim 8/Harmonic 不再支持 ODE）；步长与更新率对齐旧树
+      （max_step_size=0.004、real_time_update_rate=250），改则须重新标定 /clock。
+    * 地面车 agc_car 与目标 intruder_uav **不在本 world 内**：由 world_bringup.launch.py
+      经 ros_gz_sim create 按 config/*.yaml 参数 spawn（参数单一来源）。
+    * 静态障碍 pole_1 / pole_2 的 pose / size 对齐旧树 agc_world.world。
+-->
+<sdf version="1.8">
+  <world name="agc_world">
+
+    <!-- 光源 -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.85 0.85 0.85 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- 地面（内联平面） -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>200 200</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>200 200</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 物理：对齐旧树步长/更新率 -->
+    <physics name="default_physics" default="1" type="dart">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+
+    <!-- 注：W2-full 的传感器链路（gpu_lidar → PointCloud2）需 GZ `Sensors` 系统 +
+         ogre2 渲染上下文。本机该组合会阻塞 server（world 加载不完），故**不在本 world 内
+         默认启用**；启用方式与已知限制见 src/agc_sim/README.md「传感器链路」节。 -->
+
+    <!-- 静态障碍 pole_1（对齐旧树 pose/size） -->
+    <model name="pole_1">
+      <static>true</static>
+      <pose>2.5 0.6 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.3 0.3 3</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 0.3 3</size></box></geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 静态障碍 pole_2（对齐旧树 pose/size） -->
+    <model name="pole_2">
+      <static>true</static>
+      <pose>4.5 1.6 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.3 0.3 3</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 0.3 3</size></box></geometry>
+          <material>
+            <ambient>0 0 1 1</ambient>
+            <diffuse>0 0 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>

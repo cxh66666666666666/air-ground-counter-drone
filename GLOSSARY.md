@@ -21,7 +21,7 @@ _Avoid_: Nav2 全覆盖（含义不清）
 _Avoid_: 合同、基线文档
 
 **唯一执行口（Sole Execution Port）**:
-运动中唯一可写车体位姿的通道，即 `/agc/ground/cmd_vel`；任何其它节点均不得写车体位姿。
+运动中唯一可**命令车体运动**的通道，即 `/agc/ground/cmd_vel`；任何其它节点均不得命令车体运动。车体位姿由 GZ Sim 物理引擎产生，复位写入为唯一例外。语义与例外以契约真源为准。
 _Avoid_: 执行入口（与"Runbook"混淆）
 
 **安全层（Safety Layer）**:

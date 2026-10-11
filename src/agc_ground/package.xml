@@ -3,11 +3,17 @@
 <package format="3">
   <name>agc_ground</name>
   <version>0.0.0</version>
-  <description>AGC 地面导航与安全层（W5）</description>
+  <description>AGC 地面导航与安全层（W5）：RL 主控链路、Nav2 collision_monitor 安全层、离线基线</description>
   <maintainer email="agc@example.com">AGC Dev</maintainer>
   <license>Proprietary</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>agc_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

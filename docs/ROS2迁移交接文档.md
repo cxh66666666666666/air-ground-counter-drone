@@ -19,7 +19,7 @@
 <a id="execution-port"></a>
 ## 2. 唯一执行口
 
-- **地面唯一执行口**：`/agc/ground/cmd_vel`；**唯一**写车体位姿者为地面执行适配器（原 `ground_drive_adapter`）。
+- **地面唯一执行口**：`/agc/ground/cmd_vel`；**唯一**命令车体运动的通道为地面执行中继（原 `ground_drive_adapter`），任何其它节点**不得**命令车体运动。车体位姿由 GZ Sim 物理引擎产生；**唯一例外**为场景复位的位姿写入（受运行期门控，见 [任务门控](#task-gating)）。
 - **空中控制权**：起飞阶段归起飞控制器（原 `drone_launch_controller`）；`release_control` 后由 LQR 轨迹跟踪节点接管。
 
 <a id="params"></a>
@@ -81,6 +81,7 @@
 | 工作空间形态 | 单一项目根 `/home/chen/AGC`；ROS1 只读归档 | [ADR-0001](./adr/0001-greenfield-ros2-rewrite.md) |
 | Nav2 范围 | 模式全覆盖 · 进程按域选用 | [ADR-0003](./adr/0003-nav2-pattern-complete-absorption.md) |
 | RL 角色 | 地面主控(c2)；Nav2 作安全层与离线基线 | [ADR-0004](./adr/0004-rl-primary-controller-nav2-safety-layer.md) |
+| 地面驱动 | 真实物理（GZ DiffDrive），弃 `kinematic_sim` | [ADR-0010](./adr/0010-ground-drive-real-physics.md) |
 | Nav2 吸收（代码层） | 交叉原则，W1–W6 吸收矩阵 | [ADR-0008](./adr/0008-nav2-paradigm-absorption-as-code-principle.md) |
 | 实机 / 纯仿真 | 纯仿真优先，预留接口 | [ADR-0009](./adr/0009-sim-first-with-hardware-hooks.md) |
 | 文档真源分层 | 每类信息一个家 + 稳定锚点引用 | [ADR-0002](./adr/0002-docs-source-of-truth-layering.md) |

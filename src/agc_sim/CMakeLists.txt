@@ -3,5 +3,8 @@ project(agc_sim)
 
 find_package(ament_cmake REQUIRED)
 
-# 骨架占位：世界 / 模型 / ros_gz 桥由 W2 填充
+# 世界 / 模型 / 桥配置 / launch 的安装（W2）
+install(DIRECTORY worlds models config launch
+  DESTINATION share/${PROJECT_NAME})
+
 ament_package()

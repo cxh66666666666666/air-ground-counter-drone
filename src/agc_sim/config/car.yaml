@@ -1,0 +1,25 @@
+# agc_car 参数（W2-min）
+#
+# 本文件是地面车模型与 spawn 位的**唯一参数来源**；由 world_bringup.launch.py 读取，
+# 经 launch 单一设置注入 xacro（节点不得覆写，见契约 #params）。
+
+agc_sim:
+  car:
+    # spawn 位姿（world 系，ENU）。对齐旧树 car_start = [-4 -3 0.11 0]；
+    # z 取轮半径使车轮触地（base_link 原点在轮轴高度）。
+    spawn:
+      x: -4.0
+      y: -3.0
+      z: 0.05
+      yaw: 0.0
+    # 模型几何 / 驱动参数
+    model:
+      wheel_separation: 0.32
+      wheel_radius: 0.05
+      wheel_width: 0.03
+      max_wheel_torque: 20.0
+      max_wheel_acceleration: 1.0
+      body_length: 0.44
+      body_width: 0.34
+      body_height: 0.16
+      body_mass: 2.0

@@ -1,0 +1,55 @@
+# ros_gz_bridge 声明式桥配置（W2-min 最小集）
+#
+# 由 world_bringup.launch.py 经 ros_gz_bridge 的 parameter_bridge 以 config_file 加载。
+# QoS 与类型映射的标定说明见 src/agc_sim/README.md（W2 吸收点：sensor QoS / 类型映射，对齐 Nav2）。
+
+# 仿真时钟（GZ→ROS）
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# 地面车里程计（GZ DiffDrive 插件输出 → ROS 原始 odom；由 M0 的 ground_odom_adapter 归一）
+- ros_topic_name: "/agc/sim/ground_odom_raw"
+  gz_topic_name: "/model/agc_car/odometry"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+# 注：世界真值位姿旁路（gt）**不在 W2-min**。
+# gz `/world/agc_world/dynamic_pose/info`（gz.msgs.Pose_V）可在 gz 侧读到实体名与位姿，
+# 但本机 ros_gz_bridge(1.0.24) 的 Pose_V→tf2_msgs/TFMessage 转换不写入 frame 名
+# （frame_id / child_frame_id 均为空），无法作为带名 TF 使用。真值旁路（gt_adapter）
+# 属 W4，届时以专用适配节点实现（消费该 gz 话题或经 gz 服务查询）。
+
+# 地面车世界真值位姿（GZ PosePublisher 的 /model/agc_car/pose → ROS PoseStamped）
+# 供 M0 的 ground_odom_adapter 取 world 位姿（teleport 安全，优于 DiffDrive odom）
+- ros_topic_name: "/agc/sim/car_pose"
+  gz_topic_name: "/model/agc_car/pose"
+  ros_type_name: "geometry_msgs/msg/PoseStamped"
+  gz_type_name: "gz.msgs.Pose"
+  direction: GZ_TO_ROS
+
+# 车体 3D 激光点云（W2-full；仅当启用 GZ Sensors 系统+渲染时 gz 侧才有发布者）
+# gz 话题名取决于 sensor 的 <topic>；启用渲染后按实际 gz topic 名核对本条目。
+- ros_topic_name: "/agc/sim/car_points"
+  gz_topic_name: "/model/agc_car/lidar/points"
+  ros_type_name: "sensor_msgs/msg/PointCloud2"
+  gz_type_name: "gz.msgs.PointCloudPacked"
+  direction: GZ_TO_ROS
+  qos_profile: SENSOR_DATA
+
+# 地面车速度命令（ROS→GZ；由 M0 的执行中继发布）
+- ros_topic_name: "/model/agc_car/cmd_vel"
+  gz_topic_name: "/model/agc_car/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# 注：场景复位服务 /world/agc_world/set_pose 的桥**不在本 YAML 内**。
+# 本机 ros_gz_bridge(1.0.24) 的 YAML 服务条目（service_name/gz_req_type_name/
+# gz_rep_type_name）在 factory 侧会因空 topic 名崩溃；该服务改由 world_bringup.launch.py
+# 以 CLI 形式桥接（等价配置）：
+#   parameter_bridge /world/agc_world/set_pose@ros_gz_interfaces/srv/SetEntityPose
+# 待桥版本支持 YAML 服务后迁回本文件。

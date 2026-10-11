@@ -3,11 +3,18 @@
 <package format="3">
   <name>agc_perception</name>
   <version>0.0.0</version>
-  <description>AGC 感知与融合（W4）</description>
+  <description>AGC 感知与融合（W4）：odom / gt / perception / fusion / map 适配</description>
   <maintainer email="agc@example.com">AGC Dev</maintainer>
   <license>Proprietary</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
