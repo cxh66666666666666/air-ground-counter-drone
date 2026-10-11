@@ -65,8 +65,9 @@
     </physics>
 
     <!-- 注：W2-full 的传感器链路（gpu_lidar → PointCloud2）需 GZ `Sensors` 系统 +
-         ogre2 渲染上下文。本机该组合会阻塞 server（world 加载不完），故**不在本 world 内
-         默认启用**；启用方式与已知限制见 src/agc_sim/README.md「传感器链路」节。 -->
+         ogre2 渲染上下文。本机该组合会**阻塞 server**（world 加载不完，GPU 唤醒 / 无头 /
+         软件 GL 均未解决），故**不在本 world 内默认启用**；启用方式与已知限制见
+         src/agc_sim/README.md「传感器链路」节。 -->
 
     <!-- 静态障碍 pole_1（对齐旧树 pose/size） -->
     <model name="pole_1">
