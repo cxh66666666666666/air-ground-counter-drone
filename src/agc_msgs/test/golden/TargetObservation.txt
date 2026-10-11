@@ -1,0 +1,21 @@
+std_msgs/Header header                 # 观测时刻（传感器时间）；frame_id=world
+	builtin_interfaces/Time stamp
+		int32 sec
+		uint32 nanosec
+	string frame_id
+string target_id                       # 阶段 A 为 intruder_uav
+string sensor_id                       # 观测通道，如 air_eo_front / air_ir_top
+geometry_msgs/PoseWithCovariance pose  # world 系；协方差对角=各轴 sigma^2
+	Pose pose
+		Point position
+			float64 x
+			float64 y
+			float64 z
+		Quaternion orientation
+			float64 x 0
+			float64 y 0
+			float64 z 0
+			float64 w 1
+	float64[36] covariance
+float32 confidence                     # 该源已标定的观测质量（经验覆盖 P(|err|<=tol)）
+uint32 obs_seq                         # 该通道观测序号（可据此核查丢包）

@@ -1,0 +1,31 @@
+std_msgs/Header header                 # 最后一次真实观测时刻；frame_id=world
+	builtin_interfaces/Time stamp
+		int32 sec
+		uint32 nanosec
+	string frame_id
+string target_id                       # 阶段 A 为 intruder_uav
+geometry_msgs/PoseWithCovariance pose
+	Pose pose
+		Point position
+			float64 x
+			float64 y
+			float64 z
+		Quaternion orientation
+			float64 x 0
+			float64 y 0
+			float64 z 0
+			float64 w 1
+	float64[36] covariance
+geometry_msgs/TwistWithCovariance twist
+	Twist twist
+		Vector3  linear
+			float64 x
+			float64 y
+			float64 z
+		Vector3  angular
+			float64 x
+			float64 y
+			float64 z
+	float64[36] covariance
+float32 confidence                     # 来源内已校准的观测质量
+string source                          # gt_adapter / air_fusion

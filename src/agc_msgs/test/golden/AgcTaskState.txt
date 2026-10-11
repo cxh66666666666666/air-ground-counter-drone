@@ -1,0 +1,23 @@
+std_msgs/Header header                 # world，/clock
+	builtin_interfaces/Time stamp
+		int32 sec
+		uint32 nanosec
+	string frame_id
+uint8 state
+string state_name
+string reason_code
+string air_controller                  # takeoff_controller / lqr_tracker_node / none
+string ground_controller               # ground_commander / none
+string target_id
+float32 target_xy_distance_m           # 无目标时 NaN
+float32 target_obs_age_s               # 无目标时 NaN
+bool tracking_milestone_met
+uint8 IDLE=0
+uint8 AIR_SEARCH=1
+uint8 TARGET_ACQUIRED=2
+uint8 GROUND_APPROACH=3
+uint8 TRACKING_SUCCESS=4
+uint8 MISSION_FAILED=5
+uint8 ABORTED=6
+uint8 INTERCEPT_CONFIRMED=7            # 阶段 B 保留，阶段 A 禁用
+uint8 INFRA_FAILURE=8
