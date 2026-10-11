@@ -1,0 +1,74 @@
+# M0 最小闭环参数（由 m0_skeleton.launch.py 单一注入；节点不得覆写）
+# 见契约 #params —— launch 是参数唯一设置者。
+
+ground_odom_adapter:
+  ros__parameters:
+    world_frame: "world"
+    base_frame: "car/base_link"
+    odom_raw_topic: "/agc/sim/ground_odom_raw"
+    car_start_topic: "/agc/scenario/car_start"
+    odom_topic: "/agc/ground/odom"
+    valid_topic: "/agc/ground/odom_valid"
+    car_start_x: -4.0
+    car_start_y: -3.0
+    car_start_yaw: 0.0
+
+ground_policy_placeholder:
+  ros__parameters:
+    base_frame: "car/base_link"
+    goal_topic: "/agc/ground/goal"
+    odom_topic: "/agc/ground/odom"
+    state_topic: "/agc/task/state"
+    cmd_raw_topic: "/agc/ground/cmd_vel_raw"
+    linear_speed: 0.3
+    yaw_gain: 1.5
+    max_yaw_rate: 1.0
+    goal_tolerance: 0.2
+
+ground_safety_stub:
+  ros__parameters:
+    in_topic: "/agc/ground/cmd_vel_raw"
+    out_topic: "/agc/ground/cmd_vel"
+    base_frame: "car/base_link"
+    watchdog_s: 0.3
+
+ground_drive_relay:
+  ros__parameters:
+    in_topic: "/agc/ground/cmd_vel"
+    out_topic: "/model/agc_car/cmd_vel"
+    watchdog_s: 0.3
+
+task_manager:
+  ros__parameters:
+    world_name: "agc_world"
+    goal_topic: "/agc/ground/goal"
+    goal_x: 4.0
+    goal_y: 3.0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"
+
+scenario_reset:
+  ros__parameters:
+    world_name: "agc_world"
+    state_topic: "/agc/task/state"
+    car_start_topic: "/agc/scenario/car_start"
+    car_x: -4.0
+    car_y: -3.0
+    car_z: 0.010
+    car_yaw: 0.0
+    target_x: 6.5
+    target_y: 2.5
+    target_z: 2.0
+    target_yaw: 0.0
+
+run_logger:
+  ros__parameters:
+    experiments_root: "/home/chen/AGC/experiments"
+    git_root: "/home/chen/AGC"
+    campaign: "m0-skeleton"
+    scenario: "flat"
+    seed: 0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"

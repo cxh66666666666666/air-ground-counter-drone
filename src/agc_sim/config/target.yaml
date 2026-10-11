@@ -1,0 +1,17 @@
+# intruder_uav（目标）参数（W2-min）
+#
+# 目标为被动刚体（失重、无插件）；本文件是其模型与 spawn 位的唯一参数来源。
+# spawn 对齐旧树 target_start = [6.5 2.5 2.0 0]。
+
+agc_sim:
+  target:
+    spawn:
+      x: 6.5
+      y: 2.5
+      z: 2.0
+      yaw: 0.0
+    model:
+      body_length: 0.32
+      body_width: 0.32
+      body_height: 0.10
+      body_mass: 1.0

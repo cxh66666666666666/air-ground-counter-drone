@@ -3,11 +3,24 @@
 <package format="3">
   <name>agc_task</name>
   <version>0.0.0</version>
-  <description>AGC 任务与评估（W6）</description>
+  <description>AGC 任务与评估（W6）：task_manager、agc_run_logger、场景、评估</description>
   <maintainer email="agc@example.com">AGC Dev</maintainer>
   <license>Proprietary</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>agc_msgs</depend>
+  <depend>ros_gz_interfaces</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>agc_sim</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

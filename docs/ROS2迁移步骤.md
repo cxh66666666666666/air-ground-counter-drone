@@ -33,8 +33,8 @@
 | 环境 | P0 工具链（Jazzy/ros_gz/Nav2/PX4/uXRCE） | — | — | ✅ 已就绪（附录 B） |
 | **W0** | 仓库与工程规范 | 环境 | C2 | ✅ |
 | **W1** | 消息与接口（`agc_msgs`） | W0 | C2 | ✅ |
-| **M0** | 最小端到端闭环（Walking Skeleton） | W0·W1·W2(最小)·W5(桩) | — | ☐ |
-| **W2** | 仿真世界与模型 | W0 | C3·C7(场景层) | ☐ |
+| **M0** | 最小端到端闭环（Walking Skeleton） | W0·W1·W2(最小)·W5(桩) | — | ✅ |
+| **W2** | 仿真世界与模型 | W0 | C3·C7(场景层) | ◐ W2-min ✅ / W2-full 点云待渲染 |
 | **W3** | 空中链路 | W2 | C1·C10 | ☐ |
 | **W4** | 感知与融合 | W2 | — | ☐ |
 | **W5** | 地面导航与安全层 | W2·W4·W7 | C6 | ☐ |
@@ -84,15 +84,15 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **spec**：`.trae/specs/m0-walking-skeleton/`
 
 ### W2 · 仿真世界与模型
-- **目标**：`agc_world` + 车 / UAV 模型迁 GZ Sim；`ros_gz` 桥；传感器链路。
-- **产出**：可加载的世界与模型、桥配置。
+- **目标**：`agc_world` + 车 / UAV 模型迁 GZ Sim；`ros_gz` 桥；传感器链路。地面车为**真实物理**驱动（[ADR-0010](./adr/0010-ground-drive-real-physics.md)）。**分段交付**：W2-min（世界 + 车 + target 被动模型 + 桥最小集）→ W2-full（传感器链路 / costmap 输入数据 / 世界打磨）。
+- **产出**：可加载的世界与模型、桥配置（W2-min 供 M0；W2-full 供 W4/W5）。
 - **验收**：无头 / GUI 均可起；`/clock` 同步；点云话题有数据（QoS 见 [风险](#risks)）。
 - **挂载**：C3（非无头验收）、C7（出生间距，场景层）。
 - **Nav2 吸收点**：TF / costmap 输入约定（`OccupancyGrid`、`PointCloud2`）、sensor QoS。
 - **spec**：`.trae/specs/w2-sim-world/`
 
 ### W3 · 空中链路
-- **目标**：PX4 uXRCE-DDS 链路 + LQR 轨迹跟踪 + 跟随（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)）。
+- **目标**：PX4 uXRCE-DDS 链路 + LQR 轨迹跟踪 + 跟随（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)）；PX4 本体以 [toolchain 外部依赖](./adr/0012-px4-body-as-toolchain-dependency.md) 形态使用。
 - **产出**：起飞 / 悬停 / 接管闭环。
 - **验收**：悬停稳定、Offboard 可切、8 字轨迹恒速。
 - **挂载**：C1（8 字恒速）、C10（跟随默认关闭 / 新鲜度冻结）。
@@ -109,8 +109,9 @@ W7 RL 平台 ─────────────────┘（提供策�
 ### W5 · 地面导航与安全层
 - **目标**：`RL → cmd_vel → collision_monitor → /agc/ground/cmd_vel`（[ADR-0004](./adr/0004-rl-primary-controller-nav2-safety-layer.md)）。
 - **产出**：RL 主控链路 + Nav2 `collision_monitor` 安全层 + 离线对照基线接入。
-- **验收**：全程仅 [唯一执行口](./ROS2迁移交接文档.md#execution-port) 一个；**无第二写入者**；安全层触发可复现。
+- **验收**：全程仅 [唯一执行口](./ROS2迁移交接文档.md#execution-port) 一个；**无第二命令者**；安全层触发可复现。
 - **挂载**：C6（安全滤波器真实逃逸能力）。
+- **说明**：车体为真实物理驱动（[ADR-0010](./adr/0010-ground-drive-real-physics.md)），C6 的"真实逃逸能力"据此判定。
 - **Nav2 吸收点**：直接复用 `collision_monitor`；planner/controller 的 **plugin 抽象**（用于离线基线切换）。
 - **spec**：`.trae/specs/w5-ground-nav-safety/`
 

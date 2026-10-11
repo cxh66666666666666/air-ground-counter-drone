@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<!--
+  intruder_uav —— 阶段 A 真值目标（被动，W2-min）
+
+  实现说明（全新重写）：
+    * link 级 <gravity>false</gravity> + 无任何插件：纯被动刚体，保持悬停（SDF 的
+      gravity 属 link 而非 model）。
+    * 位姿由 set_pose 服务搬运（driver 属 W4；复位属 M0）。
+    * 参数经 xacro 注入（默认值来自 agc_sim/config/target.yaml）。
+    * 碰撞盒口径沿用旧树（0.32×0.32×0.10、mass 1.0）作为行为事实；visual 用基本几何+
+      红色（辨识色），网格细化属 W2-full，不复制旧资产。
+-->
+<sdf version="1.8" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="body_length" default="0.32"/>
+  <xacro:arg name="body_width" default="0.32"/>
+  <xacro:arg name="body_height" default="0.10"/>
+  <xacro:arg name="body_mass" default="1.0"/>
+
+  <model name="intruder_uav">
+    <static>false</static>
+
+    <link name="target/base_link">
+      <gravity>false</gravity>
+      <inertial>
+        <mass>$(arg body_mass)</mass>
+        <inertia>
+          <ixx>0.010</ixx>
+          <iyy>0.010</iyy>
+          <izz>0.020</izz>
+        </inertia>
+      </inertial>
+      <collision name="body_collision">
+        <geometry>
+          <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
+        </geometry>
+      </collision>
+      <visual name="body_visual">
+        <geometry>
+          <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
+        </geometry>
+        <material>
+          <ambient>1 0 0 1</ambient>
+          <diffuse>1 0 0 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+  </model>
+</sdf>
