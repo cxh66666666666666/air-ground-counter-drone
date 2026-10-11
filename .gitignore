@@ -1,0 +1,19 @@
+# ===== colcon 构建产物 =====
+/build/
+/install/
+/log/
+
+# ===== 外部工具链（忽略内容，仅放行 README 索引）=====
+/toolchain/*
+!/toolchain/README.md
+
+# ===== 归档旧树（只读，不纳入版本控制）=====
+/reference/
+
+# ===== 实验产物：仅 README 与各 run 的 config 快照入库（ADR-0007）=====
+/experiments/*/*/*
+!/experiments/*/*/config/
+
+# ===== Python 缓存 =====
+__pycache__/
+*.py[cod]
