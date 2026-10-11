@@ -13,7 +13,7 @@
 
 1. 按 workstream 推进；每个 workstream 各有规格 `.trae/specs/<ws>/{spec,tasks,checklist}.md`。
 2. 卡片的"验收"必须**可命令化判定**；不通过的 workstream 不得进入其下游。
-3. 完成一个 workstream，就在 [§2 状态表](#status) 打勾。
+3. 完成一个 workstream，就在 [状态表](#status) 打勾。
 4. 遇到约束问题，查契约真源对应锚点，**不改约束、改实现**。
 
 <a id="principles"></a>
@@ -21,7 +21,7 @@
 
 - **单一项目根** `/home/chen/AGC`（colcon 根即项目根）。
 - **全新重写**：旧树只读归档，仅作 W8 行为对照。
-- **Walking Skeleton 先行**（[§3 M0](#m0)）：先打通一条最小端到端闭环，再逐域加厚。
+- **Walking Skeleton 先行**（[M0](#m0)）：先打通一条最小端到端闭环，再逐域加厚。
 - **Nav2 吸收**：按 [ADR-0008](./adr/0008-nav2-paradigm-absorption-as-code-principle.md) 的吸收矩阵，在 W1–W6 **代码层**落地，每个 workstream spec 必须含"Nav2 吸收点"一节。
 - **纯仿真优先**，为实机预留接口（[ADR-0009](./adr/0009-sim-first-with-hardware-hooks.md)）。
 
@@ -70,7 +70,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 ### W1 · 消息与接口
 - **目标**：`agc_msgs` 独立包 + 9 个 rosidl 消息，字段级对齐契约。
 - **产出**：`agc_msgs`。
-- **验收**：`ros2 interface show agc_msgs/msg/AgcTaskState` 与契约 [§5 消息](./ROS2迁移交接文档.md#messages) **逐字段一致**。
+- **验收**：`ros2 interface show agc_msgs/msg/AgcTaskState` 与契约 [消息](./ROS2迁移交接文档.md#messages) **逐字段一致**。
 - **Nav2 吸收点**：topic/service/**action** 职责划分。
 - **spec**：`.trae/specs/w1-msgs/`
 
@@ -86,7 +86,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 ### W2 · 仿真世界与模型
 - **目标**：`agc_world` + 车 / UAV 模型迁 GZ Sim；`ros_gz` 桥；传感器链路。
 - **产出**：可加载的世界与模型、桥配置。
-- **验收**：无头 / GUI 均可起；`/clock` 同步；点云话题有数据（QoS 见 [§5 风险](#risks)）。
+- **验收**：无头 / GUI 均可起；`/clock` 同步；点云话题有数据（QoS 见 [风险](#risks)）。
 - **挂载**：C3（非无头验收）、C7（出生间距，场景层）。
 - **Nav2 吸收点**：TF / costmap 输入约定（`OccupancyGrid`、`PointCloud2`）、sensor QoS。
 - **spec**：`.trae/specs/w2-sim-world/`
@@ -115,7 +115,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 - **spec**：`.trae/specs/w5-ground-nav-safety/`
 
 ### W6 · 任务与评估
-- **目标**：`task_manager`、`agc_run_logger`、12 个场景、评估口径；修复已知竞态（契约 [§8](./ROS2迁移交接文档.md#lessons)）。
+- **目标**：`task_manager`、`agc_run_logger`、12 个场景、评估口径；修复已知竞态（契约 [不可回退教训](./ROS2迁移交接文档.md#lessons)）。
 - **产出**：状态机 + 日志 + 场景 + 评估脚本。
 - **验收**：终态语义正确；报告含 `shield_infeasible_rate` 与 `reset_failure_rate`。
 - **挂载**：C4（超时算失败）、C5（相位复位 t=0）、C7（出生间距 / 复位重试）、C8（终态语义）、C9（报告指标）。
@@ -141,7 +141,7 @@ W7 RL 平台 ─────────────────┘（提供策�
 <a id="hard-constraint-mounting"></a>
 ## 4. 硬约束挂载表
 
-> 约束原文见契约 [§6 硬约束](./ROS2迁移交接文档.md#hard-constraints)（C1–C10 即其 1–10 条）。**原则：挂到"首次使其可验证"的 workstream，未到该 workstream 前不强行回归。**
+> 约束原文见契约 [硬约束](./ROS2迁移交接文档.md#hard-constraints)（C1–C10 即其 1–10 条）。**原则：挂到"首次使其可验证"的 workstream，未到该 workstream 前不强行回归。**
 
 | ID | 约束摘要 | 挂载点 |
 |---|---|---|
