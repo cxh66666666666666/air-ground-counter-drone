@@ -31,10 +31,11 @@
   gz_type_name: "gz.msgs.Pose"
   direction: GZ_TO_ROS
 
-# 车体 3D 激光点云（W2-full；仅当启用 GZ Sensors 系统+渲染时 gz 侧才有发布者）
-# gz 话题名取决于 sensor 的 <topic>；启用渲染后按实际 gz topic 名核对本条目。
+# 车体 3D 激光点云（W2-full）
+# sensor 的 <topic>/agc/car_lidar</topic> → gz 点云发布在 /agc/car_lidar/points
+# （另有一条 /agc/car_lidar 的 LaserScan，本 workstream 不桥）
 - ros_topic_name: "/agc/sim/car_points"
-  gz_topic_name: "/model/agc_car/lidar/points"
+  gz_topic_name: "/agc/car_lidar/points"
   ros_type_name: "sensor_msgs/msg/PointCloud2"
   gz_type_name: "gz.msgs.PointCloudPacked"
   direction: GZ_TO_ROS

@@ -44,7 +44,7 @@ ros2 launch agc_sim world_bringup.launch.py gz_args:='-s -r -v 3 <world>'   # �
 ## 传感器链路与 costmap 输入端（W2-full）
 
 **传感器定义**：`agc_car` 挂 `gpu_lidar`（Velodyne 语义，16 线 × 360°/10 Hz，量程 0.2–20 m），
-link `car/lidar_link`，`<topic>lidar/points</topic>`。（旧树激光在己方无人机 `iris_3d_lidar` 上；
+link `car/lidar_link`，`<topic>/agc/car_lidar</topic>`（点云发布于 `/agc/car_lidar/points`）。（旧树激光在己方无人机 `iris_3d_lidar` 上；
 本次按"costmap 消费方在地面/W5"将激光先行挂车体，己方无人机激光随 W3。）
 
 **costmap 输入端数据契约（供 W4 / W5 消费）**：
@@ -57,14 +57,13 @@ link `car/lidar_link`，`<topic>lidar/points</topic>`。（旧树激光在己方
 **sensor QoS 标定**：点云与 sensor 类话题使用 `SENSOR_DATA`（best-effort、KeepLast）profile；
 TF/clock 等用默认 reliable。桥条目见 `config/bridge.yaml`。
 
-**已知限制（本环境，须在 W4 前解决）**：GZ Sim 的 `Sensors` 系统依赖 ogre2 渲染上下文；
-本机在 world 内声明 `gz-sim-sensors-system(ogre2)` 后 **server 阻塞、world 加载不完**
-（`/world/agc_world/create` 一直不可用），且默认 `server.config` 又**不含** Sensors 系统，
-故：
-- **默认不启用**传感器系统，`gz sim`（含 GUI）与 M0 不受影响；
-- 点云的实际生成待渲染环境解决（候选：`GZ_RENDERING_PLUGIN=ogre2`、为 Sensors 配置 EGL/离屏渲染、
-  或改用软件渲染），届时按实际 gz 话题名核对 `bridge.yaml` 的点云条目。
-- `world` 内传感器链路的**模型定义（`car/lidar_link` 的 `gpu_lidar`）与桥条目已就位**，仅缺渲染上下文。
+**实现要点（已打通）**：world 内 **显式全量声明系统插件且按顺序**（`Physics → UserCommands →
+SceneBroadcaster → Sensors`），与 Nav2 官方 `tb3_sandbox` 写法一致。默认 `server.config` 只含前三个；
+**若仅额外声明 Sensors、其余靠默认，会导致插件加载顺序错位、server 在加载阶段挂死**（本机曾因此被
+误判为"渲染不可用"，实为顺序问题）。sensor 的 `<topic>` 取绝对名 `/agc/car_lidar` → gz 点云话题
+`/agc/car_lidar/points`（另有 `/agc/car_lidar` 的 `LaserScan`，未桥）。
+
+**实测**：`/agc/sim/car_points`（`sensor_msgs/PointCloud2`）@ **~10 Hz**，GUI 与无头均正常；M0 不受影响。
 
 ## 物理与驱动
 
