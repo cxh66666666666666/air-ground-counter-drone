@@ -56,6 +56,14 @@
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
 
+# 目标真值位姿（W3）：intruder_uav 的 PosePublisher → ROS PoseStamped，
+# 供空中域 target_sim_source 提供目标观测（正式 gt 通路 gt_adapter 属 W4）
+- ros_topic_name: "/agc/sim/target_pose"
+  gz_topic_name: "/model/intruder_uav/pose"
+  ros_type_name: "geometry_msgs/msg/PoseStamped"
+  gz_type_name: "gz.msgs.Pose"
+  direction: GZ_TO_ROS
+
 # 注：场景复位服务 /world/agc_world/set_pose 的桥**不在本 YAML 内**。
 # 本机 ros_gz_bridge(1.0.24) 的 YAML 服务条目（service_name/gz_req_type_name/
 # gz_rep_type_name）在 factory 侧会因空 topic 名崩溃；该服务改由 world_bringup.launch.py

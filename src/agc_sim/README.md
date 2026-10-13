@@ -79,3 +79,11 @@ SceneBroadcaster → Sensors`），与 Nav2 官方 `tb3_sandbox` 写法一致。
 ## 只读旧树边界
 
 世界布局 / spawn 位 / 碰撞盒口径取自旧树对齐**行为事实**（WHAT）；实现为 GZ Sim 全新重写（HOW 不继承），未复制旧代码或资产。
+
+## W3 打补丁（回退 W2）
+
+为供 W3 空中链路挂入本世界，`agc_sim` 做最小补丁（[ADR-0019](../../docs/adr/0019-uav-trajectory-and-tracking-parameter-calibration.md)）：
+
+- `agc_world.sdf` 补 PX4 必需系统插件（`Contact`/`Imu`/`AirPressure`/`ApplyLinkWrench`/`NavSat`）+ `spherical_coordinates`，插件顺序对齐 PX4 官方 `Tools/simulation/gz/worlds/default.sdf`。
+- 作业区放大到 **80×80 m**：`agc_car` / `intruder_uav` spawn 分离 **~30 m**（`car.yaml` / `target.yaml`）；`pole_1`(0,-6) / `pole_2`(6,6) 重排入作业区（供 W3 自避障验证）。
+- 地面仍为 200×200，未改；物理步长 / 更新率不变。

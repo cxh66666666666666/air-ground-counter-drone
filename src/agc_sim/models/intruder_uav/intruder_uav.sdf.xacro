@@ -54,5 +54,22 @@
       <topic>/model/intruder_uav/cmd_vel</topic>
     </plugin>
 
+    <!-- 真值位姿旁路（W3）：发布 /model/intruder_uav/pose，供空中域 target_sim_source 取目标真值。
+         正式 gt 通路（gt_adapter）属 W4；本插件是 W3 目标源的占位数据源。
+         注意：PosePublisher 发布的是**相对父实体**的位姿 —— `publish_link_pose` 给的是
+         「link 相对 model」的零位姿（frame_id=intruder_uav，无意义）；要拿**世界系**位姿
+         必须开 `publish_model_pose`（model 的父即 world）。见 gz-sim 8 PosePublisher 文档/源码。 -->
+    <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
+      <publish_model_pose>true</publish_model_pose>
+      <publish_link_pose>false</publish_link_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_nested_model_pose>false</publish_nested_model_pose>
+      <!-- 频率必须限幅：默认「按步进（250 Hz）」会把 gz→桥→ROS 三段全灌满，
+           实测拖垮同机的 PX4 EKF（`invalid setpoints` → `blind land`）。取 30 Hz 与
+           车体 odom（DiffDrive odom_publish_frequency=30）同量级。 -->
+      <update_frequency>30</update_frequency>
+    </plugin>
+
   </model>
 </sdf>

@@ -10,7 +10,8 @@
       （max_step_size=0.004、real_time_update_rate=250），改则须重新标定 /clock。
     * 地面车 agc_car 与目标 intruder_uav **不在本 world 内**：由 world_bringup.launch.py
       经 ros_gz_sim create 按 config/*.yaml 参数 spawn（参数单一来源）。
-    * 静态障碍 pole_1 / pole_2 的 pose / size 对齐旧树 agc_world.world。
+    * 静态障碍 pole_1 / pole_2 的形态（0.3×0.3×3）沿用旧树；pose 于 **W3 打补丁**重排入 80×80 作业区（ADR-0019）。
+    * **W3 打补丁**：补 PX4 必需系统插件 + `spherical_coordinates`；作业区放大到 80×80（车/目标 spawn 分离 ~30 m）。
 -->
 <sdf version="1.8">
   <world name="agc_world">
@@ -64,21 +65,29 @@
       <real_time_update_rate>250</real_time_update_rate>
     </physics>
 
-    <!-- 系统插件：**显式全量声明且按顺序**（Physics → UserCommands → SceneBroadcaster → Sensors）。
-         原因：默认 server.config 只含前三个；若本 world 仅额外声明 Sensors 而其余靠默认，
+    <!-- 系统插件：**显式全量声明且按顺序**（W3 打补丁：补 PX4 必需插件）。
+         顺序与 PX4 官方 Tools/simulation/gz/worlds/default.sdf 一致：
+         Physics → UserCommands → SceneBroadcaster → Contact → Imu → AirPressure
+         → ApplyLinkWrench → NavSat → Sensors。
+         原因：默认 server.config 只含前三个；若仅额外声明 Sensors 而其余靠默认，
          插件加载顺序会错位（Sensors 先于 Physics/SceneBroadcaster），导致 server 在加载阶段挂死。
-         与 Nav2 官方 tb3_sandbox world 的写法一致。 -->
+         Contact / Imu / AirPressure / ApplyLinkWrench / NavSat 为 PX4 SITL 挂入本 world 所需（W3-a，ADR-0019）。 -->
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-air-pressure-system" name="gz::sim::systems::AirPressure"/>
+    <plugin filename="gz-sim-apply-link-wrench-system" name="gz::sim::systems::ApplyLinkWrench"/>
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
     <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
 
-    <!-- 静态障碍 pole_1（对齐旧树 pose/size） -->
+    <!-- 静态障碍 pole_1（W3 打补丁：重排入 80×80 作业区，供空中自避障验证；形态沿用旧树 0.3×0.3×3） -->
     <model name="pole_1">
       <static>true</static>
-      <pose>2.5 0.6 1.5 0 0 0</pose>
+      <pose>0 -6 1.5 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry><box><size>0.3 0.3 3</size></box></geometry>
@@ -93,10 +102,10 @@
       </link>
     </model>
 
-    <!-- 静态障碍 pole_2（对齐旧树 pose/size） -->
+    <!-- 静态障碍 pole_2（W3 打补丁：重排入 80×80 作业区，供空中自避障验证；形态沿用旧树 0.3×0.3×3） -->
     <model name="pole_2">
       <static>true</static>
-      <pose>4.5 1.6 1.5 0 0 0</pose>
+      <pose>6 6 1.5 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry><box><size>0.3 0.3 3</size></box></geometry>
@@ -110,6 +119,15 @@
         </visual>
       </link>
     </model>
+
+    <!-- WGS84 / ENU 基准（W3 打补丁）：PX4 NavSat 等所需，与 agc_world 的 ENU 基准一致。 -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg>8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
 
   </world>
 </sdf>

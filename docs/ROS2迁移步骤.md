@@ -35,7 +35,7 @@
 | **W1** | 消息与接口（`agc_msgs`） | W0 | C2 | ✅ |
 | **M0** | 最小端到端闭环（Walking Skeleton） | W0·W1·W2(最小)·W5(桩) | — | ✅ |
 | **W2** | 仿真世界与模型 | W0 | C3·C7(场景层) | ✅ |
-| **W3** | 空中链路 | W2 | C1·C10 | ☐ |
+| **W3** | 空中链路 | W2 | C1·C10 | ✅ |
 | **W4** | 感知与融合 | W2 | — | ☐ |
 | **W5** | 地面导航与安全层 | W2·W4 | C6 | ☐ |
 | **W6** | 任务与评估 | W5 | C4·C5·C7·C8·C9 | ☐ |
@@ -94,11 +94,12 @@ W0 ─┬─> W1 ─────────┐
 - **spec**：`.trae/specs/w2-sim-world/`
 
 ### W3 · 空中链路
-- **目标**：PX4 uXRCE-DDS 链路 + LQR 轨迹跟踪 + **对目标常开 standoff 跟踪（含自避障）**（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)、[ADR-0017](./adr/0017-air-ground-collaboration-loop.md)）；PX4 本体以 [toolchain 外部依赖](./adr/0012-px4-body-as-toolchain-dependency.md) 形态使用。
-- **产出**：起飞 / 悬停 / 接管闭环。
-- **验收**：悬停稳定、Offboard 可切、8 字轨迹恒速。
-- **挂载**：C1（8 字恒速）、C10（**跟踪常开** / 安全间距 / 新鲜度冻结）。
-- **Nav2 吸收点**：**lifecycle managed node**、pluginlib、QoS 标定。
+- **目标**：PX4 uXRCE-DDS 链路 + 共享 LQR 轨迹跟踪 + **对目标常开 standoff 跟踪（含自避障）**（[ADR-0005](./adr/0005-px4-link-uxrce-dds.md)、[ADR-0017](./adr/0017-air-ground-collaboration-loop.md)、[ADR-0018](./adr/0018-shared-control-layer-and-lqr-plugin.md)、[ADR-0019](./adr/0019-uav-trajectory-and-tracking-parameter-calibration.md)）；PX4 本体以 [toolchain 外部依赖](./adr/0012-px4-body-as-toolchain-dependency.md) 形态使用。
+- **分段**：**W3-a** 链路打通（PX4 以 `PX4_GZ_STANDALONE` 挂 `agc_world` + 起飞 / 悬停 / Offboard 接管）→ **W3-b** 共享 LQR + 真八字（C1）→ **W3-c** 常开 standoff 跟踪 + 自避障（C10）。
+- **产出**：`agc_control`（通用控制层）+ `agc_air` 飞行闭环；前置 **W2 打补丁**（PX4 系统插件 + 作业区放大）。
+- **验收**：悬停稳定、Offboard 可切；C1 真八字恒速 `v=2.0`；C10 跟踪常开 / 安全间距 `8/15 m` / 新鲜度冻结 / 自保。
+- **挂载**：C1（真八字恒速）、C10（**跟踪常开** / 安全间距 / 新鲜度冻结）。
+- **Nav2 吸收点**：**lifecycle managed node**、pluginlib（`agc_control`）、QoS 标定。
 - **spec**：`.trae/specs/w3-air-link/`
 
 ### W4 · 感知与融合
@@ -148,7 +149,7 @@ W0 ─┬─> W1 ─────────┐
 
 | ID | 约束摘要 | 挂载点 |
 |---|---|---|
-| C1 | 8 字轨迹恒速 | W3 |
+| C1 | 真八字轨迹恒速 `v=2.0` | W3 |
 | C2 | 距离阈值顺序（紧急<碰撞<安全） | W0·W1 |
 | C3 | 实证/验收用非无头（GUI） | W0（规范）· W2（实测） |
 | C4 | 超时算失败、显式完成才算成功 | W6 |
@@ -219,14 +220,14 @@ W0 ─┬─> W1 ─────────┐
 | ROS 2 Jazzy + colcon + ros_gz | 已装；`gz sim` 为 Harmonic 8.15.0（来自 `ros_gz` vendor，**须先 `source /opt/ros/jazzy/setup.bash`**） |
 | Nav2 | `ros-jazzy-nav2-bringup` 已装 |
 | PX4-Autopilot | v1.15.4（含所需子模块），SITL 可执行文件已构建 |
-| micro-XRCE-DDS Agent | v2.4.2 已编译；入口 `toolchain/bin/MicroXRCEAgent` |
+| micro-XRCE-DDS Agent | **v2.4.3**（对系统 Fast DDS 2.14 构建，与 ROS 2 Jazzy 同源）；入口 `toolchain/bin/MicroXRCEAgent`。v2.4.2 已弃用（自建 DDS 2.11 跨版本不互通）。配方见 `toolchain/README.md` |
 | `px4_msgs` | release/1.15，已在 `src/` 且通过 colcon build |
 | 工作空间 | colcon 根 = `/home/chen/AGC`；`anti_drone_agc_workspace/`、`toolchain/` 各放 `COLCON_IGNORE` |
 
 **环境坑（复现须知）**
 
 1. 本机无需也无法单独 `apt install gz-harmonic`；Harmonic 随 `ros_gz` vendor 引入，**必须先 source** 否则 `libgz-sim8-gui.so.8` 找不到。
-2. Micro-XRCE-DDS Agent v2.4.2 需 `-include` 一个 `fmt` 兼容头（fmt 9 移除了隐式 ostream formatter），并用系统 spdlog/fastcdr/fastrtps、关闭 SuperBuild。
+2. Micro-XRCE-DDS Agent 需 `-include` 一个 `fmt` 兼容头（fmt 9 移除了隐式 ostream formatter），并对系统 spdlog/fastcdr/fastrtps 构建、关闭 SuperBuild；**须用 v2.4.3**（v2.4.2 源码为 fastcdr 1.x camelCase API，无法对 fastcdr 2.x 编译）。
 3. PX4 浅克隆若缺 tag，CMake 的 `git describe` 会失败 → 需 fetch 对应 tag。
 4. 本机直连 GitHub 极慢（~25 KB/s）→ 外部仓库统一走 Gitee 镜像，pip 走清华源。
 
@@ -244,7 +245,7 @@ W0 ─┬─> W1 ─────────┐
 | `docs/adr/` | 架构决策记录 |
 | `docs/conventions/` | 工程规范（W0 产出） |
 | `.trae/specs/<ws>/` | per-workstream 规格三件套 |
-| `src/` | ROS2 包（`agc_msgs`·`agc_sim`·`agc_air`·`agc_perception`·`agc_ground`·`agc_task`·`agc_rl` + 第三方 `px4_msgs`） |
+| `src/` | ROS2 包（`agc_msgs`·`agc_sim`·`agc_control`·`agc_air`·`agc_perception`·`agc_ground`·`agc_task`·`agc_rl` + 第三方 `px4_msgs`） |
 | `experiments/` | 实验产物唯一落点 |
 | `reference/` | 归档旧树（只读） |
 | `toolchain/` | 外部仓库 / 工具链 |

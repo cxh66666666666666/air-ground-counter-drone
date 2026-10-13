@@ -1,13 +1,13 @@
 # intruder_uav（目标）参数（W2-min）
 #
 # 目标为被动刚体（失重、无插件）；本文件是其模型与 spawn 位的唯一参数来源。
-# spawn 对齐旧树 target_start = [6.5 2.5 2.0 0]。
+# spawn：W3 打补丁后作业区放大到 80×80，目标与车分离 ~30 m（ADR-0019）。
 
 agc_sim:
   target:
     spawn:
-      x: 6.5
-      y: 2.5
+      x: 15.0
+      y: 0.0
       z: 2.0
       yaw: 0.0
     model:

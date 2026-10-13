@@ -1,0 +1,108 @@
+# W3 空中链路参数 —— **唯一参数来源**
+#
+# 由 `air_bringup.launch.py` 经 launch 单一注入；节点不得覆写（契约 [参数入口] ../../docs/ROS2迁移交接文档.md#params）。
+# 契约参数名 → 本文件节点参数映射：
+#   `/agc/air/takeoff_altitude_m`      → takeoff_controller.takeoff_altitude_m
+#   `/agc/air/follow/*`                → standoff_follower.{safe_min,safe_max,height,hysteresis,max_step_m,
+#                                                              rate_hz,ref_max_age_s,confidence_min}
+#   `/agc/target/source`               → target_sim_source.source
+# 轨迹 / 控制参数见 [ADR-0019](../../docs/adr/0019-uav-trajectory-and-tracking-parameter-calibration.md)。
+
+px4_adapter:
+  ros__parameters:
+    odom_in_topic: "/fmu/out/vehicle_odometry"
+    status_in_topic: "/fmu/out/vehicle_status"
+    odom_out_topic: "/agc/air/odom"
+    status_out_topic: "/agc/air/status"
+    world_frame: "world"
+    base_frame: "drone/base_link"
+    time_offset_alpha: 0.05
+
+takeoff_controller:
+  ros__parameters:
+    takeoff_altitude_m: 2.5
+    hover_tolerance_m: 0.25
+    setpoint_rate_hz: 50.0
+    odom_timeout_s: 0.5
+    arm_after_setpoints: 50          # 先持续发 ~1 s setpoint 流（PX4 切 Offboard 的前置条件）
+    offboard_after_setpoints: 60
+    odom_topic: "/agc/air/odom"
+    status_topic: "/agc/air/status"
+    active_controller_topic: "/agc/air/active_controller"
+    release_service: "/agc/air/release_control"
+
+trajectory_tracker:
+  ros__parameters:
+    # 插件（pluginlib，agc_control 共享实现）
+    trajectory_plugin: "agc_control/Figure8Trajectory"
+    controller_plugin: "agc_control/LqrController"
+    trajectory_param_ns: "traj"
+    controller_param_ns: "ctrl"
+    controller_name: "trajectory_tracker"
+    # 控制回路
+    setpoint_rate_hz: 50.0
+    max_yaw_rate: 2.0
+    tracking_ref_timeout_s: 0.5
+    conflict_persist_s: 1.0
+    odom_topic: "/agc/air/odom"
+    status_topic: "/agc/air/status"
+    ref_topic: "/agc/air/ref"
+    tracking_ref_topic: "/agc/air/tracking_ref"
+    target_topic: "/agc/targets"
+    active_controller_topic: "/agc/air/active_controller"
+    conflict_topic: "/agc/air/control_conflict"
+    rl_offset_topic: "/agc/air/rl_offset"
+    # 真八字 Gerono：rx=15 / ry=9 / h=2.5，弧长参数化恒速 v=2.0（契约 #hard-constraints C1）
+    traj:
+      speed: 2.0
+      height: 2.5
+      rx: 15.0
+      ry: 9.0
+      center_x: 0.0
+      center_y: 0.0
+    # LQR（位置环双积分器；dt 与控制频率一致）
+    ctrl:
+      q_pos: 4.0
+      q_vel: 4.0
+      r: 1.0
+      dt: 0.02
+      acc_max: 4.0
+    # 最小安全层（R7）：静态障碍表为 W3 占位，须与 agc_world.sdf 中 pole_1/pole_2 一致；
+    # W4 由 /agc/obstacles/source 提供。
+    # `obstacle_margin` / `target_margin`：为 LQR 跟踪滞后预留的余量 —— 本层输出是**参考**，
+    # 机体实际会滞后（实测 pole_2 穿越段 lag≈1.5 m、距离带段 lag≈0.7 m），故参考边界 =
+    # 安全半径/target_min_dist + margin，以保证**机体实际**不侵入真实安全半径
+    # （契约 C6「安全滤波器参数须用真实逃逸能力」）。障碍是硬安全判据，余量取足 2.5 m。
+    safety:
+      enabled: true
+      obstacle_margin: 2.5
+      target_margin: 1.5
+      target_min_dist: 8.0
+      obstacle_names: ["pole_1", "pole_2"]
+      obstacle_x: [0.0, 6.0]
+      obstacle_y: [-6.0, 6.0]
+      obstacle_safety_radius: [2.0, 2.0]
+
+standoff_follower:
+  ros__parameters:
+    safe_min: 8.0                   # 安全间距带下沿（水平距离，m）
+    safe_max: 15.0                  # 安全间距带上沿（m）
+    height: 2.5                     # 跟踪高度（m）
+    hysteresis: 1.0                 # 距离带滞回（m）
+    max_step_m: 0.1                 # 单拍限幅（0.1 m@20 Hz → 最大水平速度 2.0 m/s）
+    rate_hz: 20.0
+    ref_max_age_s: 0.5              # 目标新鲜度（契约 C10）
+    confidence_min: 0.5
+    odom_topic: "/agc/air/odom"
+    target_topic: "/agc/targets"
+    tracking_ref_topic: "/agc/air/tracking_ref"
+    world_frame: "world"
+
+target_sim_source:
+  ros__parameters:
+    source: "sim"                   # 契约参数 /agc/target/source；"perception" 由 W4 接管
+    target_id: "intruder_uav"
+    world_frame: "world"
+    pose_topic: "/agc/sim/target_pose"
+    target_topic: "/agc/targets"
+    confidence: 1.0

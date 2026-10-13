@@ -47,7 +47,7 @@
 <a id="hard-constraints"></a>
 ## 6. 硬约束（逐条复验）
 
-1. 8 字轨迹全程恒速、无加减速；角速度 0.1（线速度 0.3 m/s）。
+1. 8 字轨迹为**真八字**（Gerono，`rx=15` / `ry=9` / `h=2.5 m`），全程恒速、无加减速（线速度 `v=2.0 m/s`，弧长参数化）。
 2. 距离阈值顺序必须满足 紧急 < 碰撞 < 安全（默认 0.7m < 0.9m < 2.4m）。
 3. 实证/验收**使用非无头（GUI）**；默认仍无头以向后兼容。
 4. 训练与评估成功定义统一：**超时一律算失败**，只有显式完成才算成功。
@@ -94,6 +94,8 @@
 | 拦截范围 | 物理捕获判据 + 行为级电子干扰（EMI 不建模） | [ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md) |
 | 执行范围出口 | 到 W6；W7 / W8 归后续；拦截落 W2 / W6 | [ADR-0016](./adr/0016-execution-scope-exit-w6.md) |
 | 空地协同口径 | UAV 常开 standoff 跟踪 + 自保；地面自主规划 | [ADR-0017](./adr/0017-air-ground-collaboration-loop.md) |
+| 通用控制层 / 共享 LQR | `agc_control` 插件化（pluginlib），air / ground 共用 | [ADR-0018](./adr/0018-shared-control-layer-and-lqr-plugin.md) |
+| UAV 轨迹 / 跟踪参数 | 真八字 Gerono + 恒速 `v=2.0`；C1 修订 | [ADR-0019](./adr/0019-uav-trajectory-and-tracking-parameter-calibration.md) |
 | `task_manager` 架构 | **未决**，延后至 W6 spec | — |
 
 ---

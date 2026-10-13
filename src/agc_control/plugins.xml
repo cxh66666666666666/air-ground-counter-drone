@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!--
+  agc_control 插件描述（pluginlib）
+
+  两类插件：①轨迹生成器 TrajectoryGenerator；②控制器 Controller。
+  由 agc_air / agc_ground（基线）经 pluginlib 按类名加载，共用同一实现（ADR-0018）。
+-->
+<class_libraries>
+<library path="agc_trajectory_plugins">
+  <class name="agc_control/LinearTrajectory" type="agc_control::LinearTrajectory"
+         base_class_type="agc_control::TrajectoryGenerator">
+    <description>直线（非周期）：自起点沿 heading_deg 直行 length_m 后保持</description>
+  </class>
+  <class name="agc_control/CircularTrajectory" type="agc_control::CircularTrajectory"
+         base_class_type="agc_control::TrajectoryGenerator">
+    <description>圆周（周期）：圆心 center、半径 radius、恒速、高度 height</description>
+  </class>
+  <class name="agc_control/HelicalTrajectory" type="agc_control::HelicalTrajectory"
+         base_class_type="agc_control::TrajectoryGenerator">
+    <description>螺旋（周期）：半径 radius、每圈爬升 pitch、恒速</description>
+  </class>
+  <class name="agc_control/Figure8Trajectory" type="agc_control::Figure8Trajectory"
+         base_class_type="agc_control::TrajectoryGenerator">
+    <description>真八字 Gerono（周期，自交）：rx=15 / ry=9 / h=2.5，弧长参数化恒速（C1）</description>
+  </class>
+  <class name="agc_control/HoverTrajectory" type="agc_control::HoverTrajectory"
+         base_class_type="agc_control::TrajectoryGenerator">
+    <description>悬停（非周期）：保持起始位置</description>
+  </class>
+  <class name="agc_control/StepTrajectory" type="agc_control::StepTrajectory"
+         base_class_type="agc_control::TrajectoryGenerator">
+    <description>阶跃（非周期）：以最小 jerk 平滑过渡到目标点</description>
+  </class>
+</library>
+
+<library path="agc_controller_plugins">
+  <class name="agc_control/LqrController" type="agc_control::LqrController"
+         base_class_type="agc_control::Controller">
+    <description>LQR 位置环控制器（DARE 求增益）：u = ẍ_ref + K·[e_p, e_v]</description>
+  </class>
+</library>
+</class_libraries>

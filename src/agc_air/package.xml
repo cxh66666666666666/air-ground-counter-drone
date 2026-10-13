@@ -3,11 +3,36 @@
 <package format="3">
   <name>agc_air</name>
   <version>0.0.0</version>
-  <description>AGC 空中链路（W3）</description>
+  <description>AGC 空中链路（W3）：PX4 uXRCE-DDS 链路、起飞/悬停、共享 LQR 轨迹跟踪、常开 standoff 跟踪与自保</description>
   <maintainer email="agc@example.com">AGC Dev</maintainer>
   <license>Proprietary</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>agc_msgs</depend>
+  <depend>agc_control</depend>
+  <depend>px4_msgs</depend>
+
+  <depend>eigen3_cmake_module</depend>
+  <build_depend>eigen</build_depend>
+  <build_export_depend>eigen</build_export_depend>
+  <exec_depend>eigen</exec_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>agc_sim</exec_depend>
+  <!-- lifecycle 编排复用 Nav2 组件（ADR-0008 吸收点） -->
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
