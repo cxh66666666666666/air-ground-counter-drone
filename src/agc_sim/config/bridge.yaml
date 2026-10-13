@@ -17,19 +17,13 @@
   gz_type_name: "gz.msgs.Odometry"
   direction: GZ_TO_ROS
 
-# 注：世界真值位姿旁路（gt）**不在 W2-min**。
+# 注：世界真值位姿旁路（gt）**不在 W2-min**，且**不经本桥**。
 # gz `/world/agc_world/dynamic_pose/info`（gz.msgs.Pose_V）可在 gz 侧读到实体名与位姿，
 # 但本机 ros_gz_bridge(1.0.24) 的 Pose_V→tf2_msgs/TFMessage 转换不写入 frame 名
-# （frame_id / child_frame_id 均为空），无法作为带名 TF 使用。真值旁路（gt_adapter）
-# 属 W4，届时以专用适配节点实现（消费该 gz 话题或经 gz 服务查询）。
-
-# 地面车世界真值位姿（GZ PosePublisher 的 /model/agc_car/pose → ROS PoseStamped）
-# 供 M0 的 ground_odom_adapter 取 world 位姿（teleport 安全，优于 DiffDrive odom）
-- ros_topic_name: "/agc/sim/car_pose"
-  gz_topic_name: "/model/agc_car/pose"
-  ros_type_name: "geometry_msgs/msg/PoseStamped"
-  gz_type_name: "gz.msgs.Pose"
-  direction: GZ_TO_ROS
+# （frame_id / child_frame_id 均为空），无法作为带名真值使用。
+# 真值旁路由 **W4 的专用节点 `gt_bypass`** 经 gz-transport 直读该话题实现
+# （发布 `/agc/gt/<entity>`）。故本桥不再桥接逐实体 PosePublisher 话题
+# （原 `/agc/sim/{car,target}_pose` 已在 W4 退役）。
 
 # 车体 3D 激光点云（W2-full）
 # sensor 的 <topic>/agc/car_lidar</topic> → gz 点云发布在 /agc/car_lidar/points
@@ -55,14 +49,6 @@
   ros_type_name: "geometry_msgs/msg/Twist"
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
-
-# 目标真值位姿（W3）：intruder_uav 的 PosePublisher → ROS PoseStamped，
-# 供空中域 target_sim_source 提供目标观测（正式 gt 通路 gt_adapter 属 W4）
-- ros_topic_name: "/agc/sim/target_pose"
-  gz_topic_name: "/model/intruder_uav/pose"
-  ros_type_name: "geometry_msgs/msg/PoseStamped"
-  gz_type_name: "gz.msgs.Pose"
-  direction: GZ_TO_ROS
 
 # 注：场景复位服务 /world/agc_world/set_pose 的桥**不在本 YAML 内**。
 # 本机 ros_gz_bridge(1.0.24) 的 YAML 服务条目（service_name/gz_req_type_name/

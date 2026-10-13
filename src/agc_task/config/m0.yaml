@@ -1,17 +1,8 @@
 # M0 最小闭环参数（由 m0_skeleton.launch.py 单一注入；节点不得覆写）
 # 见契约 #params —— launch 是参数唯一设置者。
-
-ground_odom_adapter:
-  ros__parameters:
-    world_frame: "world"
-    base_frame: "car/base_link"
-    odom_raw_topic: "/agc/sim/ground_odom_raw"
-    car_start_topic: "/agc/scenario/car_start"
-    odom_topic: "/agc/ground/odom"
-    valid_topic: "/agc/ground/odom_valid"
-    car_start_x: -4.0
-    car_start_y: -3.0
-    car_start_yaw: 0.0
+#
+# 注：ground_odom_adapter 自 W4 起由 agc_perception 的 perception_bringup 提供
+# （位姿来源改为真值旁路 /agc/gt/agc_car），其参数在 agc_perception/config/perception.yaml。
 
 ground_policy_placeholder:
   ros__parameters:

@@ -1,0 +1,54 @@
+# W4 感知仿真「传感器通道」配置（契约参数 /agc/perception/sensors_file）
+#
+# 诚实口径：本文件描述**真值派生的感知仿真**观测通道，不是真实传感器标定，
+#   非真实视觉/雷达识别（ADR-0020）。
+#   - sigma_xy_m / sigma_z_m：观测噪声标准差（m）；confidence 由 Rayleigh 径向覆盖解析给出：
+#       conf = 1 - exp(-tol² / (2·sigma_xy²))，tol = /agc/calibration/confidence_tolerance_m。
+#   - latency_s：观测延迟（s）；发布的观测 header.stamp 仍为**原始观测时刻**，
+#     消费者看到的观测年龄会随延迟增长。
+#   - drop_prob：单拍独立丢包概率。
+#   - 视场/距离门控（按「原始观测时刻」的无人机位姿判定）：
+#       boresight_body：传感器朝向（机体系单位向量；传感器原点取无人机位置）
+#       hfov_deg / vfov_deg：水平/垂直全视场角
+#       range_min_m / range_max_m：有效量程
+#   - 可选：corr_xy（通道内 x/y 相关）、bias_m（确定性偏置）、noise_tau_s（AR(1) 时间相关）、
+#     drop_burst_*（成簇丢失两态）。默认 0/关。
+sensors:
+  - id: air_eo_front
+    sigma_xy_m: 0.10
+    sigma_z_m: 0.12
+    latency_s: 0.0
+    drop_prob: 0.0
+    boresight_body: [1.0, 0.0, 0.0]   # 机头前视 EO
+    hfov_deg: 100.0                   # ±50°
+    vfov_deg: 70.0                    # ±35°
+    range_min_m: 0.30
+    range_max_m: 12.0
+    corr_xy: 0.0
+    noise_tau_s: 0.0
+    bias_m: [0.0, 0.0, 0.0]
+    drop_burst_prob: 0.0
+    drop_burst_mean_s: 0.5
+    drop_burst_mean_gap_s: 5.0
+  - id: air_ir_top
+    sigma_xy_m: 0.20
+    sigma_z_m: 0.25
+    latency_s: 0.0
+    drop_prob: 0.0
+    boresight_body: [1.0, 0.0, -0.10] # 顶部红外云台固定前视（微俯）
+    hfov_deg: 70.0                    # ±35°
+    vfov_deg: 50.0                    # ±25°
+    range_min_m: 0.30
+    range_max_m: 12.0
+    corr_xy: 0.0
+    noise_tau_s: 0.0
+    bias_m: [0.0, 0.0, 0.0]
+    drop_burst_prob: 0.0
+    drop_burst_mean_s: 0.5
+    drop_burst_mean_gap_s: 5.0
+
+# 观测模型全局开关（默认关，保证默认行为等价）
+perception_model:
+  occlusion:
+    enabled: false      # 视线遮挡门控总开关
+    pad_m: 0.0          # 遮挡判定障碍外扩（m）

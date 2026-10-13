@@ -30,6 +30,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     share = get_package_share_directory('agc_air')
     sim_share = get_package_share_directory('agc_sim')
+    perception_share = get_package_share_directory('agc_perception')
     # install/agc_air/share/agc_air → 上溯 4 级为项目根（toolchain 在根下）
     agc_root = Path(share).parents[3]
 
@@ -53,9 +54,9 @@ def generate_launch_description():
         DeclareLaunchArgument('agent_port', default_value='8888'),
         DeclareLaunchArgument('autostart', default_value='true',
                               description='是否自动 configure/activate 空中节点'),
-        DeclareLaunchArgument('target_source', default_value='sim',
-                              description='目标源（契约 /agc/target/source）：sim 用 gz 真值；'
-                                          'none 则不发目标（用于单独录制 C1 八字轨迹）'),
+        DeclareLaunchArgument('target_source', default_value='gt_adapter',
+                              description='契约 /agc/target/source（W4 目标源）：'
+                                          'gt_adapter | air_fusion | none（none 用于单独录制 C1 八字轨迹）'),
     ]
 
     # ---- 世界 + 桥 + 车/目标 spawn（复用 agc_sim，唯一世界 / 唯一时钟）----
@@ -65,6 +66,16 @@ def generate_launch_description():
         launch_arguments={
             'gz_args': LaunchConfiguration('gz_args'),
             'use_sim_time': LaunchConfiguration('use_sim_time'),
+        }.items(),
+    )
+
+    # ---- W4 感知适配层（真值旁路 + 目标源）；目标源由本 launch 单一设置 ----
+    perception = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(perception_share, 'launch', 'perception_bringup.launch.py')),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'target_source': LaunchConfiguration('target_source'),
         }.items(),
     )
 
@@ -95,11 +106,6 @@ def generate_launch_description():
     nodes = [
         Node(package='agc_air', executable='px4_adapter',
              name='px4_adapter', parameters=common, output='screen'),
-        Node(package='agc_air', executable='target_sim_source',
-             name='target_sim_source',
-             parameters=[params_file, {'use_sim_time': LaunchConfiguration('use_sim_time'),
-                                       'source': LaunchConfiguration('target_source')}],
-             output='screen'),
         Node(package='agc_air', executable='takeoff_controller',
              name='takeoff_controller', parameters=common, output='screen'),
         Node(package='agc_air', executable='trajectory_tracker',
@@ -132,6 +138,7 @@ def generate_launch_description():
     # （PX4 自身 gz_bridge 只给文件名，资源解析靠 gz 侧），故本变量必须对整个 launch 生效。
     ld.add_action(SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', gz_models + ':' + gz_worlds))
     ld.add_action(world)
+    ld.add_action(perception)
     ld.add_action(agent)
     ld.add_action(TimerAction(period=12.0, actions=[px4]))
     for n in nodes:

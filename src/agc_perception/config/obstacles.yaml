@@ -1,0 +1,19 @@
+# W4 感知用「障碍真值」几何（供 air_perception 生成 ObstacleObservation 与遮挡判定）
+#
+# 对齐旧树行为：旧 air_perception 从 scenario_file 读取静态障碍真值（非从 gazebo 取），
+# 故本文件的位姿/尺寸**须与 src/agc_sim/worlds/agc_world.sdf** 中的静态障碍一致
+# （pole_1 / pole_2，W3 打补丁后重排）。W6 若将障碍改为运行期 spawn/toggle，则应把本文件
+# 指向对应场景描述。
+obstacles:
+  - id: pole_1
+    x: 0.0
+    y: -6.0
+    z: 1.5
+    yaw: 0.0
+    size: [0.3, 0.3, 3.0]
+  - id: pole_2
+    x: 6.0
+    y: 6.0
+    z: 1.5
+    yaw: 0.0
+    size: [0.3, 0.3, 3.0]

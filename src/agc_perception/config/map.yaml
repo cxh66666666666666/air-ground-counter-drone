@@ -1,0 +1,9 @@
+# W4 地图几何（供 map_adapter 构建 OccupancyGrid；契约参数见 perception.yaml）
+#
+# 对齐旧树行为：旧 map_adapter 由场景文件的 map 段取几何。W4 收敛到本文件。
+# 作业区为 80×80 m（W3 打补丁放大），故栅格覆盖 [-40,40]² 以容纳真八字足迹与柱。
+resolution: 0.5      # m/cell
+size_x: 80.0         # m
+size_y: 80.0         # m
+origin_x: -40.0      # 栅格左下角 x（world 系）
+origin_y: -40.0      # 栅格左下角 y（world 系）

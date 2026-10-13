@@ -5,7 +5,9 @@
 #   `/agc/air/takeoff_altitude_m`      → takeoff_controller.takeoff_altitude_m
 #   `/agc/air/follow/*`                → standoff_follower.{safe_min,safe_max,height,hysteresis,max_step_m,
 #                                                              rate_hz,ref_max_age_s,confidence_min}
-#   `/agc/target/source`               → target_sim_source.source
+#   `/agc/target/source`               → (W4) agc_perception 目标源：gt_adapter / air_fusion
+# 目标源节点（gt_adapter / air_fusion）由 agc_perception 的 launch 提供，air_bringup include 之；
+# W3 占位目标源节点已在 W4 退役（见 .trae/specs/w4-perception-fusion/spec.md R3）。
 # 轨迹 / 控制参数见 [ADR-0019](../../docs/adr/0019-uav-trajectory-and-tracking-parameter-calibration.md)。
 
 px4_adapter:
@@ -97,12 +99,3 @@ standoff_follower:
     target_topic: "/agc/targets"
     tracking_ref_topic: "/agc/air/tracking_ref"
     world_frame: "world"
-
-target_sim_source:
-  ros__parameters:
-    source: "sim"                   # 契约参数 /agc/target/source；"perception" 由 W4 接管
-    target_id: "intruder_uav"
-    world_frame: "world"
-    pose_topic: "/agc/sim/target_pose"
-    target_topic: "/agc/targets"
-    confidence: 1.0

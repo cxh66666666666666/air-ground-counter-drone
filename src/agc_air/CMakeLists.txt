@@ -36,12 +36,13 @@ ament_target_dependencies(agc_air_lib ${DEPS})
 target_link_libraries(agc_air_lib Eigen3::Eigen)
 
 # 空中链路节点（R1/R2/R4/R5/R6/R7/R8）
+# 注：W3 占位目标源节点已在 W4 退役（真值源改由 agc_perception 的 gt_adapter /
+# air_fusion 提供，见 .trae/specs/w4-perception-fusion/spec.md R3）。
 set(NODES
   px4_adapter
   takeoff_controller
   trajectory_tracker
-  standoff_follower
-  target_sim_source)
+  standoff_follower)
 
 foreach(node ${NODES})
   add_executable(${node} src/${node}.cpp)

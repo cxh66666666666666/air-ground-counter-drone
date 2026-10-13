@@ -1,0 +1,80 @@
+# W4 感知与融合参数 —— **唯一参数来源**
+#
+# 由 `perception_bringup.launch.py` 经 launch 单一注入；节点不得覆写（契约 [参数入口]）。
+# 契约参数名 → 本文件节点参数映射：
+#   `/agc/target/source`            → gt_adapter.target_source（air_fusion 同理）
+#   `/agc/perception/sensors_file`  → air_perception.sensors_file（W4-b）
+#   `/agc/obstacles/source`         → air_fusion / map_adapter（W4-b/c）
+
+gt_bypass:
+  ros__parameters:
+    world_frame: "world"
+    world_name: "agc_world"
+    gz_topic: "/world/agc_world/dynamic_pose/info"
+    out_topic_prefix: "/agc/gt/"
+    entities: ["agc_car", "intruder_uav"]
+    rate_hz: 30.0
+
+ground_odom_adapter:
+  ros__parameters:
+    world_frame: "world"
+    base_frame: "car/base_link"
+    gt_topic: "/agc/gt/agc_car"
+    odom_topic: "/agc/ground/odom"
+    valid_topic: "/agc/ground/odom_valid"
+    rate_hz: 30.0
+    diff_window_s: 0.15
+    odom_max_age_s: 0.5
+
+gt_adapter:
+  ros__parameters:
+    world_frame: "world"
+    target_model: "intruder_uav"
+    target_id: "intruder_uav"
+    gt_topic: "/agc/gt/intruder_uav"
+    target_topic: "/agc/targets"
+    target_source: "gt_adapter"      # 契约 /agc/target/source（launch 可覆写）
+    rate_hz: 10.0
+    pose_std_m: 0.01
+    twist_std_m: 0.05
+    diff_window_s: 0.15
+# ---- W4-b · 感知与融合 ----
+air_perception:
+  ros__parameters:
+    world_frame: "world"
+    target_id: "intruder_uav"
+    target_gt_topic: "/agc/gt/intruder_uav"
+    drone_odom_topic: "/agc/air/odom"
+    obs_topic: "/agc/air/obs"
+    obs_hz: 20.0
+    confidence_tolerance_m: 0.25
+    seed: "0"
+    # sensors_file / obstacles_file 由 launch 以绝对路径注入
+
+air_fusion:
+  ros__parameters:
+    target_id: "intruder_uav"
+    hz: 10.0
+    target_max_age_s: 0.35        # 感知层内部新鲜度门控；须 <= 契约 C10 消费侧冻结阈值（spec R6）
+    obs_max_age_s: 0.35
+    gate_m: 1.5
+    confidence_min: 0.5
+    min_target_sources: 1
+    obstacle_pad_m: 0.05
+    correlated_pad_m: 0.05
+    cold_start_min_agree: 2
+    reference_hold_s: 1.0
+    confidence_tolerance_m: 0.25
+    obs_topic: "/agc/air/obs"
+    target_topic: "/agc/targets"
+    obstacle_topic: "/agc/obstacles"
+    world_frame: "world"
+    # target_source / obstacles_source 由 launch 注入
+
+# ---- W4-c · 地图 ----
+map_adapter:
+  ros__parameters:
+    world_frame: "world"
+    rate_hz: 2.0
+    map_topic: "/agc/map"
+    # map_file / obstacles_file / obstacles_source 由 launch 注入

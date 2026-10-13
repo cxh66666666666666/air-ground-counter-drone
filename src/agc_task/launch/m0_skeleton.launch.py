@@ -20,6 +20,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     sim_share = get_package_share_directory('agc_sim')
     task_share = get_package_share_directory('agc_task')
+    perception_share = get_package_share_directory('agc_perception')
     params_file = os.path.join(task_share, 'config', 'm0.yaml')
     world_file = os.path.join(sim_share, 'worlds', 'agc_world.sdf')
 
@@ -32,11 +33,20 @@ def generate_launch_description():
         }.items(),
     )
 
+    # W4 感知适配层（真值旁路 + 地面 odom 归一 + 目标源）；ground_odom_adapter 自 W4 起
+    # 由 agc_perception 提供（位姿来源改为真值旁路），M0 不再直接起该节点。
+    perception = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(perception_share, 'launch', 'perception_bringup.launch.py')),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'target_source': 'gt_adapter',
+        }.items(),
+    )
+
     common = [params_file, {'use_sim_time': LaunchConfiguration('use_sim_time')}]
 
     nodes = [
-        Node(package='agc_perception', executable='ground_odom_adapter',
-             name='ground_odom_adapter', parameters=common, output='screen'),
         Node(package='agc_ground', executable='ground_safety_stub',
              name='ground_safety_stub', parameters=common, output='screen'),
         Node(package='agc_ground', executable='ground_drive_relay',
@@ -57,6 +67,7 @@ def generate_launch_description():
         'gz_args', default_value=['-r -v 3 ', world_file],
         description='gz sim 参数（加 -s 可无头）'))
     ld.add_action(world_bringup)
+    ld.add_action(perception)
     for n in nodes:
         ld.add_action(n)
     return ld
