@@ -6,6 +6,10 @@
 #   `/agc/air/follow/*`                → standoff_follower.{safe_min,safe_max,height,hysteresis,max_step_m,
 #                                                              rate_hz,ref_max_age_s,confidence_min}
 #   `/agc/target/source`               → (W4) agc_perception 目标源：gt_adapter / air_fusion
+#   R-032（C10 冻结下游封闭）           → trajectory_tracker.{target_max_age_s,confidence_min,
+#                                                              rl_offset_timeout_s,rl_offset_max_m}
+#   R-033（UAV 联合安全屏障）            → trajectory_tracker.safety.{reaction_time_s,max_speed_mps,
+#                                                              reachability_margin}
 # 目标源节点（gt_adapter / air_fusion）由 agc_perception 的 launch 提供，air_bringup include 之；
 # W3 占位目标源节点已在 W4 退役（见 .trae/specs/w4-perception-fusion/spec.md R3）。
 # 轨迹 / 控制参数见 [ADR-0019](../../docs/adr/0019-uav-trajectory-and-tracking-parameter-calibration.md)。
@@ -19,6 +23,9 @@ px4_adapter:
     world_frame: "world"
     base_frame: "drone/base_link"
     time_offset_alpha: 0.05
+    # 局部原点（R-003）：PX4 odom/setpoint 在**局部系**（相对 EKF 全局原点）；其世界 ENU 位置
+    # = 己方机 spawn 位姿。此处为本地默认；launch 以真实 spawn 位姿覆盖（契约 #params 单一来源）。
+    origin_pose: "0,0,0.2,0,0,0"
 
 takeoff_controller:
   ros__parameters:
@@ -32,6 +39,8 @@ takeoff_controller:
     status_topic: "/agc/air/status"
     active_controller_topic: "/agc/air/active_controller"
     release_service: "/agc/air/release_control"
+    # 局部原点（R-003）：起飞 setpoint 经 OffboardInterface 由世界 ENU → 局部 NED（减本原点）
+    origin_pose: "0,0,0.2,0,0,0"
 
 trajectory_tracker:
   ros__parameters:
@@ -45,7 +54,36 @@ trajectory_tracker:
     setpoint_rate_hz: 50.0
     max_yaw_rate: 2.0
     tracking_ref_timeout_s: 0.5
+    # R-032（C10 冻结下游封闭）：目标门 = 源时间窗 + confidence；RL offset 寿命 / 能力限幅。
+    target_max_age_s: 0.5            # 目标源时间窗（对齐契约 C10 ref_max_age_s=0.5）
+    confidence_min: 0.5              # 目标 confidence 门槛（对齐契约 C10 confidence>=0.5）
+    rl_offset_timeout_s: 0.5         # RL offset 寿命 / 生效窗口（源时间超时归零）
+    rl_offset_max_m: 2.0             # RL offset 能力限幅（幅值上限，m）
     conflict_persist_s: 1.0
+    # R-035（空中控制唯一权威与控制许可）：**配套许可 / 诊断，非 ABI、非命令者**。
+    #   control_permit_topic —— tracker 的许可 claim/ack 话题（std_msgs/String JSON；transient_local + reliable）；
+    #   conflict_clear_s      —— 竞争者 claim 消失清冲突阈值（s）；
+    #   唯一权威 = active_controller==controller_name 的显式授权（**不**凭发布者计数判定）。
+    control_permit_topic: "/agc/air/control_permit"
+    conflict_clear_s: 2.0
+    # R-036（C1 高度语义统一与同时间证据；ADR-0051）：**配套诊断 / 口径，非 ABI、非命令者**。
+    #   唯一世界高度语义 = 世界 **ENU z**（`world` frame，向上）；对外 base_ref 发布带 `z_offset_`
+    #   （层高基准 = 接管时刻机体高度 − 轨迹 h），与生效 effective **同一高度基准**（发布前加同一 offset，
+    #   见 trajectory_tracker.cpp ⑦）；`publishTrackStatus` 追加 `z_offset` / `height_datum` 使差异**可辨**。
+    #   下列 `c1.*` 为 C1 验收容限，由脚本 `scripts/w6_r036_check.py` **读取**（不复制参数）：
+    #     ref_speed_target        —— 参考恒速目标 |v|（m/s，弧长参数化）；
+    #     ref_speed_tol           —— 参考 |v| 相对目标的 max 数值容限（m/s）；
+    #     height_datum_tol_m      —— 对外 base_ref 与 effective 高度基准一致容限（z 差，m）；
+    #     body_speed_p95_tol_mps  —— 机体（world GT）**稳态**速度误差 P95 容限（m/s；**占位待回填**）；
+    #     height_err_p95_tol_m    —— 机体高度跟踪误差 P95 容限（m；**占位待回填**）；
+    #     sustained_limit_eps_mps —— 「持续越限」判定阈值（m/s，占位对齐 P95 容限）。
+    c1:
+      ref_speed_target: 2.0
+      ref_speed_tol: 1.0e-3
+      height_datum_tol_m: 0.10
+      body_speed_p95_tol_mps: 0.30     # 占位待回填（W3「恒速误差 ε」尚未实测标定）
+      height_err_p95_tol_m: 0.20       # 占位待回填
+      sustained_limit_eps_mps: 0.30
     odom_topic: "/agc/air/odom"
     status_topic: "/agc/air/status"
     ref_topic: "/agc/air/ref"
@@ -54,6 +92,9 @@ trajectory_tracker:
     active_controller_topic: "/agc/air/active_controller"
     conflict_topic: "/agc/air/control_conflict"
     rl_offset_topic: "/agc/air/rl_offset"
+    tracking_status_topic: "/agc/air/tracking_status"   # R-032：配套诊断（非 ABI / 非命令者）
+    # 局部原点（R-003）：轨迹 setpoint 经 OffboardInterface 由世界 ENU → 局部 NED（减本原点）
+    origin_pose: "0,0,0.2,0,0,0"
     # 真八字 Gerono：rx=15 / ry=9 / h=2.5，弧长参数化恒速 v=2.0（契约 #hard-constraints C1）
     traj:
       speed: 2.0
@@ -69,20 +110,28 @@ trajectory_tracker:
       r: 1.0
       dt: 0.02
       acc_max: 4.0
-    # 最小安全层（R7）：静态障碍表为 W3 占位，须与 agc_world.sdf 中 pole_1/pole_2 一致；
-    # W4 由 /agc/obstacles/source 提供。
-    # `obstacle_margin` / `target_margin`：为 LQR 跟踪滞后预留的余量 —— 本层输出是**参考**，
-    # 机体实际会滞后（实测 pole_2 穿越段 lag≈1.5 m、距离带段 lag≈0.7 m），故参考边界 =
-    # 安全半径/target_min_dist + margin，以保证**机体实际**不侵入真实安全半径
-    # （契约 C6「安全滤波器参数须用真实逃逸能力」）。障碍是硬安全判据，余量取足 2.5 m。
+    # 安全层（R7 + R-033 联合安全屏障）：静态障碍**几何**（名称 / 坐标）由单一真源
+    # `agc_sim/config/world_geometry.yaml` 经 composition（`w6_composition.apply_air_geometry`）
+    # **派生注入**（见 S-06 / ADR-0062）——本文件**不**硬编码障碍坐标（避免第二份几何）。
+    # 此处仅保留**安全余量**参数（半径 / margin / 反应时间 / 可达性，属安全参数非几何）。
+    # 余量分层（R-033，逐项由配置项承载）：
+    #   obstacle_margin / target_margin —— **跟踪误差**（LQR 滞后）余量（实测 pole_2 穿越段 lag≈1.5 m、
+    #     距离带段 lag≈0.7 m）；
+    #   reaction_time_s × max_speed_mps —— **反应时间**余量（`react_margin`）；
+    #   reachability_margin —— **可达性**（LQR 制动 / 加速度受限）余量。
+    #   修正后参考边界 = 安全半径/target_min_dist + 上述余量之和，使**机体实际**不侵入真实安全半径
+    #   （契约 C6「安全滤波器参数须用真实逃逸能力」+ C10 自保）。障碍是硬安全判据，余量取足。
+    # ⚠ 限定模型：本层是**二维静态圆盘屏障**（限实验用途），不含车 / 动态障碍状态（= unsupported），
+    #   不建模三维机体外形 / 载荷外伸（见 docs/adr/0048）。
     safety:
       enabled: true
       obstacle_margin: 2.5
       target_margin: 1.5
       target_min_dist: 8.0
-      obstacle_names: ["pole_1", "pole_2"]
-      obstacle_x: [0.0, 6.0]
-      obstacle_y: [-6.0, 6.0]
+      reaction_time_s: 0.2              # R-033：反应时间余量（s）
+      max_speed_mps: 2.0                # R-033：反应时间内可达到的水平速度（m/s）
+      reachability_margin: 0.3          # R-033：可达性（制动 / 加速度受限）余量（m）
+      # obstacle_names / obstacle_x / obstacle_y —— 由真源派生注入（见上）；此处不再硬编码。
       obstacle_safety_radius: [2.0, 2.0]
 
 standoff_follower:

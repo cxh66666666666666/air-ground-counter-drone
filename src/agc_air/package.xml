@@ -15,9 +15,15 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
+  <depend>trajectory_msgs</depend>
   <depend>agc_msgs</depend>
   <depend>agc_control</depend>
   <depend>px4_msgs</depend>
+  <!-- pluginlib（`agc_control` 插件装载，CMakeLists `find_package` 直接使用） -->
+  <depend>pluginlib</depend>
+  <!-- 生命周期失联检测：复用 Nav2 bond 惯用法（ADR-0049） -->
+  <depend>bond</depend>
+  <depend>bondcpp</depend>
 
   <depend>eigen3_cmake_module</depend>
   <build_depend>eigen</build_depend>
@@ -26,6 +32,8 @@
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- launch 使用 `get_package_share_directory`（air_bringup.launch.py） -->
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>agc_sim</exec_depend>

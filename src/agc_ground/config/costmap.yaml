@@ -1,0 +1,82 @@
+# agc_ground 分层 costmap 参数（W5 · R3）—— 由 ground_bringup.launch.py 单一注入
+#
+# 用途：**离线对照基线**（R8 的 Nav2 planner/controller）**自持**
+#       （`ground_baseline` 内建 `Costmap2DROS`，节点名 `costmap`）；
+#       RL 主控**不消费** costmap（[ADR-0060](../../../docs/adr/0060-nav2-absorption-applicability-and-command-source-trimming.md)），
+#       故 `command_source=rl` **不**起独立 costmap 进程；
+#       **不作** collision_monitor 的感知源（安全层走 `scan`，见 ground.yaml）。
+#
+# 分层语义（承接 W4 遗留；分层语义映射表见 W5 spec「Nav2 吸收点」）：
+#   static  ← W4 `/agc/map`（OccupancyGrid，latched）
+#   obstacle← `/agc/ground/scan_filtered`（2D LaserScan，车顶水平扫描，R-007 自滤后）
+#   voxel   ← `/agc/sim/car_points`（3D PointCloud2）
+#   inflation ← 本层本地膨胀（无外部输入）
+# 坐标：`global_frame=world`、`robot_base_frame=car/base_link`（契约 #namespace）；
+#       **全域（非滚动）**：`static` 层接入 W4 `/agc/map` 后，Nav2 static 层把栅格重设为
+#       W4 地图全域（160×160 @ 0.5，origin −40,−40），故 costmap 覆盖整个作业区。
+#       初值的 rolling/width/height 在 static 层生效前使用，之后由 static 层接管。
+
+costmap:
+  ros__parameters:
+    update_frequency: 5.0
+    publish_frequency: 2.0
+    global_frame: world
+    robot_base_frame: car/base_link
+    rolling_window: false
+    width: 40
+    height: 40
+    resolution: 0.25
+    robot_radius: 0.6
+    track_unknown_space: true
+    plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
+    # —— static 层：W4 的 /agc/map ——
+    static_layer:
+      plugin: "nav2_costmap_2d::StaticLayer"
+      map_subscribe_transient_local: True
+      map_topic: "/agc/map"
+    # —— obstacle 层：2D 激光 ——
+    obstacle_layer:
+      plugin: "nav2_costmap_2d::ObstacleLayer"
+      enabled: True
+      observation_sources: scan
+      scan:
+        # R-007：消费 scan_self_filter 自滤后的扫描（与安全层同一口径）
+        topic: /agc/ground/scan_filtered
+        max_obstacle_height: 2.5
+        clearing: True
+        marking: True
+        data_type: "LaserScan"
+        raytrace_max_range: 20.0
+        raytrace_min_range: 0.0
+        obstacle_max_range: 15.0
+        obstacle_min_range: 0.0
+    # —— voxel 层：3D 点云 ——
+    voxel_layer:
+      plugin: "nav2_costmap_2d::VoxelLayer"
+      enabled: True
+      publish_voxel_map: True
+      origin_z: 0.0
+      z_resolution: 0.25
+      z_voxels: 16
+      max_obstacle_height: 2.5
+      # 地面回波（z≈0）不得计为障碍，否则整片地面被判 lethal、Navfn 无法规划
+      min_obstacle_height: 0.30
+      mark_threshold: 0
+      observation_sources: pointcloud
+      pointcloud:
+        topic: /agc/sim/car_points
+        data_type: "PointCloud2"
+        max_obstacle_height: 2.5
+        min_obstacle_height: 0.30
+        clearing: True
+        marking: True
+        raytrace_max_range: 20.0
+        raytrace_min_range: 0.0
+        obstacle_max_range: 15.0
+        obstacle_min_range: 0.0
+    # —— inflation 层（本地）——
+    inflation_layer:
+      plugin: "nav2_costmap_2d::InflationLayer"
+      cost_scaling_factor: 3.0
+      inflation_radius: 1.0
+    always_send_full_costmap: True

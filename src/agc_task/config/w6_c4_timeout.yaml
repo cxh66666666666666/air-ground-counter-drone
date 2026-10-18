@@ -1,0 +1,42 @@
+# W6 C4 超时判据验收配置（供 R3/C4）。
+# 逻辑：目标置于远处（与车 goal 相距 ≈37 m），车抵 goal 后仍不满足 |car-target|≤D_track，
+#       故 wall-clock > T_max 时应结算 MISSION_FAILED(reason_code=TIMEOUT)。
+# 注：t_max_s 取 45（< 契约暂定 120 s）仅用于缩短验收时长；判据机制与 120 s 时完全一致。
+task_manager:
+  ros__parameters:
+    world_name: "agc_world"
+    goal_topic: "/agc/ground/goal"
+    goal_x: 4.0
+    goal_y: 3.0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"
+    # 运行模式（R-001）：本验收走 m0_skeleton（无空中链路）→ 显式声明无空中域
+    air_present: false
+    ground_controller_name: "agc_rl"
+    t_max_s: 45.0
+
+scenario_reset:
+  ros__parameters:
+    world_name: "agc_world"
+    state_topic: "/agc/task/state"
+    car_start_topic: "/agc/scenario/car_start"
+    car_x: -4.0
+    car_y: -3.0
+    car_z: 0.010
+    car_yaw: 0.0
+    target_x: 30.0
+    target_y: 30.0
+    target_z: 2.0
+    target_yaw: 0.0
+
+run_logger:
+  ros__parameters:
+    experiments_root: "/home/chen/AGC/experiments"
+    git_root: "/home/chen/AGC"
+    campaign: "w6-task-eval"
+    scenario: "c4_timeout"
+    seed: 0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"

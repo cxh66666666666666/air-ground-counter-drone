@@ -35,20 +35,40 @@
   direction: GZ_TO_ROS
   qos_profile: SENSOR_DATA
 
+# 车体 3D 激光的水平扫描（2D LaserScan；W5 安全层 collision_monitor 的 `scan` 源，对齐 Nav2 官方示例）
+- ros_topic_name: "/agc/ground/scan"
+  gz_topic_name: "/agc/car_lidar"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+  qos_profile: SENSOR_DATA
+
+# R-027（ADR-0042）：地面车接触真值（GZ contact sensor → ROS）。
+# 车模 agc_car.sdf.xacro 的 car/base_link 挂 contact sensor（监测 base_collision 与其它碰撞体）。
+# **实测**（gz topic -l）：gz-sim-contact-system 的话题由其作用域名决定，**不**取 SDF <topic> 值——
+# 实际为 /world/agc_world/model/agc_car/link/car/base_link/sensor/contact/contact（本条目据实采用）。
+# 检测到接触时发布 gz.msgs.Contacts，桥为 ros_gz_interfaces/Contacts；仅供 run_logger 记
+# **真实碰撞事件**（R-027），非命令者、不改冻结 9 消息 ABI。
+- ros_topic_name: "/agc/ground/contact"
+  gz_topic_name: "/world/agc_world/model/agc_car/link/car/base_link/sensor/contact/contact"
+  ros_type_name: "ros_gz_interfaces/msg/Contacts"
+  gz_type_name: "gz.msgs.Contacts"
+  direction: GZ_TO_ROS
+
 # 地面车速度命令（ROS→GZ；由 M0 的执行中继发布）
+# R-009（ADR-0025）：ROS 侧话题名**不变**（/model/agc_car/cmd_vel，中继与验收脚本照旧），
+# 但 gz 侧改桥到「意图」话题 /agc/sim/cmd_intent；GZ 侧的 agc_cmd_deadman 插件订阅该意图，
+# fresh→转发、stale→归零，再写 DiffDrive 默认订阅的 gz 话题 /model/agc_car/cmd_vel。
+# 即：DiffDrive 命令口（gz /model/agc_car/cmd_vel）的唯一写入者是插件（本桥不再直写）。
 - ros_topic_name: "/model/agc_car/cmd_vel"
-  gz_topic_name: "/model/agc_car/cmd_vel"
+  gz_topic_name: "/agc/sim/cmd_intent"
   ros_type_name: "geometry_msgs/msg/Twist"
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
 
-# 目标无人机速度命令（W2-interception，R9；ROS→GZ）
-# 目标挂 GZ VelocityControl，外部经此话题脚本化驱动（driver / 干扰注入节点属 W6）
-- ros_topic_name: "/agc/sim/target_cmd_vel"
-  gz_topic_name: "/model/intruder_uav/cmd_vel"
-  ros_type_name: "geometry_msgs/msg/Twist"
-  gz_type_name: "gz.msgs.Twist"
-  direction: ROS_TO_GZ
+# 目标无人机速度命令桥**已退役**（W6 前置 P，见 .trae/specs/w6-task-eval/spec.md 前置 P）：
+# `intruder_uav` 改由**第二 PX4 SITL 实例**经 uXRCE / `px4_msgs` 驱动
+# （`agc_task/intruder_driver`），不复用 gz VelocityControl 通道。
 
 # 注：场景复位服务 /world/agc_world/set_pose 的桥**不在本 YAML 内**。
 # 本机 ros_gz_bridge(1.0.24) 的 YAML 服务条目（service_name/gz_req_type_name/

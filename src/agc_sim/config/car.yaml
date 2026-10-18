@@ -1,30 +1,45 @@
-# agc_car 参数（W2-min）
+# agc_car 参数（W5 保形换装后）
 #
-# 本文件是地面车模型与 spawn 位的**唯一参数来源**；由 world_bringup.launch.py 读取，
+# 本文件是地面平台模型与 spawn 位的**唯一参数来源**；由 world_bringup.launch.py 读取，
 # 经 launch 单一设置注入 xacro（节点不得覆写，见契约 #params）。
-# 参数默认值以 ROS 官方 nav2_minimal_tb3_sim 的 TB3 waffle 为基座（见模型文件注释）。
+# 基座为 Gazebo Fuel 官方模型 Clearpath Robotics Husky A200（ADR-0021(d)）；来源 / 许可 /
+# 署名 / sha256 见 docs/conventions/第三方资产与许可.md（上游许可待核实，候选 BSD，未决）。
 
 agc_sim:
   car:
     # spawn 位姿（world 系，ENU）。W3 打补丁：作业区放大到 80×80，车与目标分离 ~30 m（ADR-0019）；
-    # z 取 TB3 车身原点触地高度（轮半径 0.033 − 轮心局部 z 0.023 = 0.010）。
+    # z 取 Husky 轮触地高度：轮心局部 z 0.035 − 轮半径 0.17775 = 0.14275（base_link 原点离地）。
     spawn:
       x: -15.0
       y: 0.0
-      z: 0.010
+      z: 0.143
       yaw: 0.0
-    # 模型几何 / 驱动参数（基座 TB3 waffle；mass 取旧树行为事实 2.0）
+    # 模型几何 / 驱动参数（Husky A200 官方几何；mass 为 Fuel 底盘质量 33.855 kg）
     model:
-      wheel_separation: 0.287
-      wheel_radius: 0.033
-      wheel_width: 0.018
-      max_wheel_torque: 20.0
-      max_wheel_acceleration: 1.0
-      body_length: 0.265
-      body_width: 0.265
-      body_height: 0.089
-      body_mass: 2.0
+      wheel_separation: 0.57095
+      wheel_radius: 0.17775
+      wheel_width: 0.1143
+      max_wheel_torque: 100.0
+      max_wheel_acceleration: 5.0
+      # 顶速上限（决定 v_car_max，供 C2 标定，ADR-0021）
+      max_linear_velocity: 1.5
+      max_angular_velocity: 2.0
+      # 末端失效停车守门人（R-009，ADR-0025）：GZ 侧插件的意图失效超时（s）。
+      # 与 ground.yaml 的中继 watchdog_s（0.3）同量级；经 world_bringup 单一注入 SDF（契约 #params）。
+      cmd_deadman_timeout_s: 0.3
+      body_length: 1.0074
+      body_width: 0.5709
+      body_height: 0.2675
+      body_mass: 33.855
       # 拦截载荷（W2-interception，R10）：轻量附件、无碰撞、不改动 DiffDrive 标定
       # 捕获网面半径（m）→ 直径 2 m；干扰载荷/网面附件质量（kg，可忽略）
+      # —— R-037 载荷外伸 / 碰撞口径一致化（ADR-0052(b)）：外伸 1.0 m 仅作**出生净空推导**登记
+      #    （ADR-0023）；载荷无 collision 且不在 z=0.48 扫描面 → 不进安全层视野、物理接触验证 unsupported；
+      #    载荷**物理启用后必须重标** C2/C6 与本口径（不借旧标定维持）。**不改**任何模型/驱动参数。
       capture_net_radius: 1.0
       payload_mass: 0.05
+      # —— R-037 传感器安装高度如实登记（ADR-0052(a)）——
+      #   `car/lidar_link` z=0.48 m（车顶水平面）；安全层 / costmap 消费的 `/agc/ground/scan_filtered`
+      #   等价于 z≈0.48 的 2D 水平面 → 低障碍 / 悬空结构 / 薄障碍未必可见；「立柱 world 达标」
+      #   仅对「z≈0.48 有足够水平截面且进入光束」的障碍族成立，**不得外推**为任意障碍通用保证。
+      #   详细安装高度与障碍族边界见 agc_car.sdf.xacro（lidar_link 段）与 ADR-0052。

@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import setup
 
 package_name = 'agc_rl'
@@ -9,12 +11,19 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/config', ['config/rl.yaml']),
+        ('share/' + package_name + '/launch', ['launch/rl_inference.launch.py']),
+        ('share/' + package_name + '/policies', glob('policies/*.json')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='AGC Dev',
     maintainer_email='agc@example.com',
-    description='AGC RL 平台（W7）',
+    description='AGC RL 平台（W5-b 地面最小版；训练产线留 W7）',
     license='Proprietary',
-    entry_points={'console_scripts': []},
+    entry_points={
+        'console_scripts': [
+            'ground_policy_rl = agc_rl.inference_node:main',
+        ],
+    },
 )

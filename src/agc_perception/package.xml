@@ -17,6 +17,14 @@
   <depend>tf2_ros</depend>
   <depend>agc_msgs</depend>
   <depend>yaml-cpp</depend>
+  <!-- gz 真值旁路（gt_bypass）：经 gz-transport 直读 dynamic_pose/info；声明键取 vendor 包
+       （对照 ros_gz_sim：gz-transport13 → gz_transport_vendor，gz-msgs10 → gz_msgs_vendor） -->
+  <depend>gz_transport_vendor</depend>
+  <depend>gz_msgs_vendor</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

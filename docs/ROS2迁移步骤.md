@@ -37,8 +37,8 @@
 | **W2** | 仿真世界与模型 | W0 | C3·C7(场景层) | ✅ |
 | **W3** | 空中链路 | W2 | C1·C10 | ✅ |
 | **W4** | 感知与融合 | W2 | — | ✅ |
-| **W5** | 地面导航与安全层 | W2·W4 | C6 | ☐ |
-| **W6** | 任务与评估 | W5 | C4·C5·C7·C8·C9 | ☐ |
+| **W5** | 地面导航与安全层 | W2·W4 | C6 | ✅ |
+| **W6** | 任务与评估 | W5 | C4·C5·C7·C8·C9 | ✅ |
 | **W7** | RL 平台 | W2 | — | ☐（后续） |
 | **W8** | 对照与冻结 | W6·W7 | C1–C10（容差） | ☐（后续） |
 
@@ -111,20 +111,23 @@ W0 ─┬─> W1 ─────────┐
 
 ### W5 · 地面导航与安全层
 - **目标**：`RL → cmd_vel → collision_monitor → /agc/ground/cmd_vel`（[ADR-0004](./adr/0004-rl-primary-controller-nav2-safety-layer.md)；本次为 **RL 最小版**）。
+- **分段**：**W5-a** 安全层真化（`collision_monitor` 点云源 + costmap 组装 + C2 三档承载）→ **W5-b** RL 最小版（`agc_rl` 接口 + 推理节点接入唯一执行链）→ **W5-c** 离线对照基线（Nav2 planner/controller + `agc_control` LQR 切换）+ 全链回归。
+- **前置补丁**：**W2 打补丁**（地面平台保形换装为差速 UGV + 实测顶速，[ADR-0021](./adr/0021-ground-safety-thresholds-and-platform-recalibration.md)）。
 - **产出**：RL 主控链路 + Nav2 `collision_monitor` 安全层 + 离线对照基线接入。
 - **验收**：全程仅 [唯一执行口](./ROS2迁移交接文档.md#execution-port) 一个；**无第二命令者**；安全层触发可复现。
-- **挂载**：C6（安全滤波器真实逃逸能力）。
+- **挂载**：C6（安全滤波器真实逃逸能力）；C2（三档阈值行为承载，[ADR-0021](./adr/0021-ground-safety-thresholds-and-platform-recalibration.md)）。
 - **说明**：车体为真实物理驱动（[ADR-0010](./adr/0010-ground-drive-real-physics.md)），C6 的"真实逃逸能力"据此判定。
-- **Nav2 吸收点**：直接复用 `collision_monitor`；planner/controller 的 **plugin 抽象**（用于离线基线切换）。
+- **Nav2 吸收点**：直接复用 `collision_monitor`；planner/controller 的 **plugin 抽象**（用于离线基线切换）；costmap 分层语义组装（承接 W4 遗留）。
 - **spec**：`.trae/specs/w5-ground-nav-safety/`
 
 ### W6 · 任务与评估
 - **目标**：`task_manager`、`agc_run_logger`、12 个场景、评估口径；修复已知竞态（契约 [不可回退教训](./ROS2迁移交接文档.md#lessons)）。**拦截裁决**（物理捕获判据 + 行为级干扰注入）与"捕获 / 干扰"**终态语义扩展**（[ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md)），并消解契约 [终态语义](./ROS2迁移交接文档.md#terminal-semantics) 的旧口径。
 - **产出**：状态机 + 日志 + 场景 + 评估脚本。
 - **验收**：终态语义正确；报告含 `shield_infeasible_rate` 与 `reset_failure_rate`。
-- **挂载**：C4（超时算失败）、C5（相位复位 t=0）、C7（出生间距 / 复位重试）、C8（终态语义）、C9（报告指标）。
-- **Nav2 吸收点**：**行为树抽象**（`task_manager` 候选）、恢复行为模式。
-- **未决**：`task_manager` 架构（自研状态机 vs Nav2 BT）—— 在 W6 spec 内定夺。
+- **挂载**：C4（超时算失败）、C5（相位复位 t=0）、C7（出生净空 / 复位重试，[ADR-0023](./adr/0023-spawn-clearance-recalibration.md)）、C8（终态语义）、C9（报告指标）。
+- **Nav2 吸收点**：**行为树抽象**（`task_manager` 候选 → **已决议**：自研 C++ 状态机**吸收其模式**，不引入 `bt_navigator`）、恢复行为模式。
+- **前置 P**：W2-interception 回退（`intruder_uav` **PX4 化**，[ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md) 修订）+ 可行性闸门（双 PX4 同世界 + mode 注入）。
+- **已决**：`task_manager` 架构 = 自研确定性 C++ 状态机；拦截 = 物理捕获（发射式网，[ADR-0022](./adr/0022-launched-net-capture-mechanism.md)）+ 行为级干扰（[ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md) 修订）。
 - **spec**：`.trae/specs/w6-task-eval/`
 
 ### W7 · RL 平台（**后续**，不在本次出口）
@@ -150,12 +153,12 @@ W0 ─┬─> W1 ─────────┐
 | ID | 约束摘要 | 挂载点 |
 |---|---|---|
 | C1 | 真八字轨迹恒速 `v=2.0` | W3 |
-| C2 | 距离阈值顺序（紧急<碰撞<安全） | W0·W1 |
+| C2 | 距离阈值顺序（紧急<碰撞<安全） | W0·W1（顺序）· W5（行为承载，[ADR-0021](./adr/0021-ground-safety-thresholds-and-platform-recalibration.md)） |
 | C3 | 实证/验收用非无头（GUI） | W0（规范）· W2（实测） |
 | C4 | 超时算失败、显式完成才算成功 | W6 |
 | C5 | 每 episode 相位复位 t=0 | W6 |
 | C6 | 安全滤波器用真实逃逸能力 | W5 |
-| C7 | 出生间距 ≥2.4m；复位失败 ≤3 次不占预算 | W2（场景层）· W6 |
+| C7 | 出生净空 ≥ 可标定下限（[ADR-0023](./adr/0023-spawn-clearance-recalibration.md)）；复位失败 ≤3 次不占预算 | W2（场景层）· W6 |
 | C8 | 终态"抵近并持续跟踪"；`SUCCESS` 不得称"拦截完成" | W6 |
 | C9 | 报告含 `shield_infeasible_rate`、`reset_failure_rate` | W6 |
 | C10 | 无人机跟踪常开；安全间距；`ref_max_age_s=0.5`、`confidence≥0.5` 冻结 | W3 |

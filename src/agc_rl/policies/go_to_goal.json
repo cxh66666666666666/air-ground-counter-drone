@@ -1,0 +1,7 @@
+{
+  "name": "deterministic_go_to_goal",
+  "avoid_obstacles": false,
+  "safe_distance_norm": 0.35,
+  "forward_half_width_sectors": 1,
+  "prefer_side": "left"
+}

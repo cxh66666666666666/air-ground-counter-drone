@@ -12,6 +12,8 @@
   <depend>rclcpp</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav2_msgs</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>agc_msgs</depend>
@@ -21,6 +23,14 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>agc_sim</exec_depend>
+  <!-- 顶层 launch（m0_skeleton / w6）起各域组件并解析 YAML 场景参数 -->
+  <exec_depend>agc_air</exec_depend>
+  <exec_depend>agc_ground</exec_depend>
+  <exec_depend>agc_perception</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>px4_msgs</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

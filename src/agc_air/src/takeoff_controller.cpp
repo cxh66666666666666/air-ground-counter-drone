@@ -32,21 +32,21 @@ public:
 protected:
   CallbackReturn on_configure_impl() override
   {
-    takeoff_altitude_m_ = declare_parameter<double>("takeoff_altitude_m", 2.5);
-    hover_tolerance_m_ = declare_parameter<double>("hover_tolerance_m", 0.25);
-    rate_hz_ = declare_parameter<double>("setpoint_rate_hz", 50.0);
-    odom_timeout_s_ = declare_parameter<double>("odom_timeout_s", 0.5);
-    arm_after_n_ = declare_parameter<int>("arm_after_setpoints", 50);
-    offboard_after_n_ = declare_parameter<int>("offboard_after_setpoints", 60);
-    arm_retry_ticks_ = declare_parameter<int>("arm_retry_ticks", 100);
+    takeoff_altitude_m_ = declare_param_idempotent<double>("takeoff_altitude_m", 2.5);
+    hover_tolerance_m_ = declare_param_idempotent<double>("hover_tolerance_m", 0.25);
+    rate_hz_ = declare_param_idempotent<double>("setpoint_rate_hz", 50.0);
+    odom_timeout_s_ = declare_param_idempotent<double>("odom_timeout_s", 0.5);
+    arm_after_n_ = declare_param_idempotent<int>("arm_after_setpoints", 50);
+    offboard_after_n_ = declare_param_idempotent<int>("offboard_after_setpoints", 60);
+    arm_retry_ticks_ = declare_param_idempotent<int>("arm_retry_ticks", 100);
     active_controller_topic_ =
-      declare_parameter<std::string>("active_controller_topic", "/agc/air/active_controller");
+      declare_param_idempotent<std::string>("active_controller_topic", "/agc/air/active_controller");
     release_service_ =
-      declare_parameter<std::string>("release_service", "/agc/air/release_control");
+      declare_param_idempotent<std::string>("release_service", "/agc/air/release_control");
 
     OffboardParams p;
-    p.odom_topic = declare_parameter<std::string>("odom_topic", "/agc/air/odom");
-    p.status_topic = declare_parameter<std::string>("status_topic", "/agc/air/status");
+    p.odom_topic = declare_param_idempotent<std::string>("odom_topic", "/agc/air/odom");
+    p.status_topic = declare_param_idempotent<std::string>("status_topic", "/agc/air/status");
     p.setpoint_dt = 1.0 / rate_hz_;
     p.odom_timeout_s = odom_timeout_s_;
     offboard_ = std::make_unique<OffboardInterface>(*this, p);
@@ -113,6 +113,8 @@ private:
     }
     released_ = true;
     state_ = State::kReleased;   // 立即停止发 setpoint：跟踪器在下一拍接管（交接窗口 ≈ 一拍）
+    // R-035（交权顺序，见 ADR-0050）：先**销毁** setpoint / OCM 发布器（真正让出唯一发布者地位），
+    // **再**在 active_controller 上显式指定 tracker —— tracker 据此推导唯一授权（**不**凭发布者计数）。
     offboard_->releaseSetpointPublishers();   // 真正让出唯一发布者地位（见该函数注释）
     publishActive("trajectory_tracker");
     res->success = true;

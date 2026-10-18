@@ -1,0 +1,42 @@
+# W6 R6 验收配置：randomize=true + seed=0 → 同 seed 两次 reset 生成相同 spawn（C7 可复现）。
+task_manager:
+  ros__parameters:
+    world_name: "agc_world"
+    goal_topic: "/agc/ground/goal"
+    goal_x: 4.0
+    goal_y: 3.0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"
+    # 运行模式（R-001）：本验收走 m0_skeleton（无空中链路）→ 显式声明无空中域
+    air_present: false
+    ground_controller_name: "agc_rl"
+
+scenario_reset:
+  ros__parameters:
+    world_name: "agc_world"
+    state_topic: "/agc/task/state"
+    car_start_topic: "/agc/scenario/car_start"
+    car_x: -4.0
+    car_y: -3.0
+    car_z: 0.010
+    car_yaw: 0.0
+    target_x: 6.5
+    target_y: 2.5
+    target_z: 2.0
+    target_yaw: 0.0
+    spawn_clearance_min_m: 6.0
+    spawn_randomize: true
+    spawn_seed: 0
+    spawn_search_radius_m: 3.0
+
+run_logger:
+  ros__parameters:
+    experiments_root: "/home/chen/AGC/experiments"
+    git_root: "/home/chen/AGC"
+    campaign: "w6-task-eval"
+    scenario: "r6-random"
+    seed: 0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"

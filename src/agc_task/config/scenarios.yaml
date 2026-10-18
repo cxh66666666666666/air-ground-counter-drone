@@ -1,0 +1,129 @@
+# W6 场景族登记表（R5）——12 场景轴矩阵 + 期望终态。
+#
+# 轴：目标运动 {static|linear|maneuver} × 障碍 {none|static|dynamic}
+#     × 感知 {nominal|dropout|fov} × 结局 {tracking|capture|jam|unreachable|timeout}
+# 由 w6.launch.py 读取，与 config/w6_base.yaml 合并（场景覆盖基参）后单一注入（契约 #params）。
+# 说明：
+#   * `intruder_driver` 段描述目标运动（W6 PX4 驱动；整数 load 由双 PX4 整链 launch 集成承载）。
+#   * capture / jam 类场景的**期望终态**依赖 W6-c 裁决器（Task 9–11）；spawn/goal 已就绪，裁决落地即达终态。
+#   * 感知注入（dropout / fov）与障碍（none / static）的**承载者**见 config/scenario_carriers.yaml；
+#     launch 启动时校验声明轴值必有承载者，无承载者（obstacle=dynamic）显式拒绝运行。
+#   * `support_status`：supported = 全部声明轴有承载者；unsupported:<axis> = 该轴无承载者（拒绝运行）。
+scenes:
+  s01_static_none_nominal_track:
+    axes: {target_motion: static, obstacle: none, perception: nominal, outcome: tracking}
+    support_status: supported
+    expected_terminal: TRACKING_SUCCESS
+    params:
+      task_manager: {goal_follow_target: false}
+      run_logger: {scenario: "s01_static_none_nominal_track"}
+      intruder_driver: {motion: static}
+
+  s02_linear_none_nominal_track:
+    axes: {target_motion: linear, obstacle: none, perception: nominal, outcome: tracking}
+    support_status: supported
+    expected_terminal: TRACKING_SUCCESS
+    params:
+      task_manager: {goal_follow_target: true, goal_x: 6.5, goal_y: 2.5}
+      run_logger: {scenario: "s02_linear_none_nominal_track"}
+      intruder_driver: {motion: linear, speed_mps: 0.5}
+
+  s03_maneuver_none_nominal_track:
+    axes: {target_motion: maneuver, obstacle: none, perception: nominal, outcome: tracking}
+    support_status: supported
+    expected_terminal: TRACKING_SUCCESS
+    params:
+      task_manager: {goal_follow_target: true, goal_x: 6.5, goal_y: 2.5}
+      run_logger: {scenario: "s03_maneuver_none_nominal_track"}
+      intruder_driver: {motion: maneuver, speed_mps: 0.5, radius_m: 4.0}
+
+  s04_static_static_obs_track:
+    axes: {target_motion: static, obstacle: static, perception: nominal, outcome: tracking}
+    support_status: supported
+    expected_terminal: TRACKING_SUCCESS
+    params:
+      scenario_reset: {car_x: -4.0, car_y: -3.0, target_x: 6.5, target_y: 2.5}
+      run_logger: {scenario: "s04_static_static_obs_track"}
+      intruder_driver: {motion: static}
+
+  s05_linear_dynamic_obs_track:
+    axes: {target_motion: linear, obstacle: dynamic, perception: nominal, outcome: tracking}
+    support_status: "unsupported:obstacle"
+    expected_terminal: TRACKING_SUCCESS
+    params:
+      task_manager: {goal_follow_target: true, goal_x: 6.5, goal_y: 2.5}
+      run_logger: {scenario: "s05_linear_dynamic_obs_track"}
+      intruder_driver: {motion: linear, speed_mps: 0.5}
+
+  s06_static_none_dropout_track:
+    axes: {target_motion: static, obstacle: none, perception: dropout, outcome: tracking}
+    support_status: supported
+    expected_terminal: TRACKING_SUCCESS
+    params:
+      run_logger: {scenario: "s06_static_none_dropout_track"}
+      intruder_driver: {motion: static}
+
+  s07_linear_none_fov_track:
+    axes: {target_motion: linear, obstacle: none, perception: fov, outcome: tracking}
+    support_status: supported
+    expected_terminal: TRACKING_SUCCESS
+    params:
+      task_manager: {goal_follow_target: true, goal_x: 6.5, goal_y: 2.5}
+      run_logger: {scenario: "s07_linear_none_fov_track"}
+      intruder_driver: {motion: linear, speed_mps: 0.5}
+
+  s08_static_none_nominal_capture:
+    axes: {target_motion: static, obstacle: none, perception: nominal, outcome: capture}
+    support_status: supported
+    expected_terminal: INTERCEPT_CONFIRMED
+    expected_reason: CAPTURE_NET
+    params:
+      scenario_reset: {target_x: 4.5, target_y: 3.0}
+      task_manager: {goal_follow_target: false, goal_x: 4.5, goal_y: 3.0}
+      run_logger: {scenario: "s08_static_none_nominal_capture"}
+      intruder_driver: {motion: static}
+
+  s09_linear_none_nominal_jam:
+    axes: {target_motion: linear, obstacle: none, perception: nominal, outcome: jam}
+    support_status: supported
+    expected_terminal: INTERCEPT_CONFIRMED
+    expected_reason: JAM_LAND
+    params:
+      task_manager: {goal_follow_target: true, goal_x: 6.5, goal_y: 2.5}
+      run_logger: {scenario: "s09_linear_none_nominal_jam"}
+      intruder_driver: {motion: linear, speed_mps: 0.5}
+
+  s10_maneuver_none_fov_timeout:
+    axes: {target_motion: maneuver, obstacle: none, perception: fov, outcome: timeout}
+    support_status: supported
+    expected_terminal: MISSION_FAILED
+    expected_reason: TIMEOUT
+    params:
+      # 目标置远 + 不跟随 → 始终不满足抵近判据 → T_max 超时（缩短 T_max 便于验收）
+      scenario_reset: {target_x: 30.0, target_y: 30.0}
+      task_manager: {goal_follow_target: false, t_max_s: 40.0}
+      run_logger: {scenario: "s10_maneuver_none_fov_timeout"}
+      intruder_driver: {motion: maneuver, speed_mps: 0.5, radius_m: 4.0}
+
+  s11_static_static_none_unreachable:
+    axes: {target_motion: static, obstacle: static, perception: nominal, outcome: unreachable}
+    support_status: supported
+    expected_terminal: MISSION_FAILED
+    expected_reason: TIMEOUT
+    params:
+      # goal 置于立柱另一侧（车被静态障碍阻隔）；当前以超时结算（规划不可达属后续）
+      scenario_reset: {car_x: 0.0, car_y: -1.0, car_yaw: -1.5707963267948966, target_x: 20.0, target_y: 20.0}
+      task_manager: {goal_x: 0.0, goal_y: -9.0, t_max_s: 30.0}
+      run_logger: {scenario: "s11_static_static_none_unreachable"}
+      intruder_driver: {motion: static}
+
+  s12_linear_dynamic_nominal_capture:
+    axes: {target_motion: linear, obstacle: dynamic, perception: nominal, outcome: capture}
+    support_status: "unsupported:obstacle"
+    expected_terminal: INTERCEPT_CONFIRMED
+    expected_reason: CAPTURE_NET
+    params:
+      scenario_reset: {target_x: 4.5, target_y: 3.0}
+      task_manager: {goal_follow_target: true, goal_x: 4.5, goal_y: 3.0}
+      run_logger: {scenario: "s12_linear_dynamic_nominal_capture"}
+      intruder_driver: {motion: linear, speed_mps: 0.3}

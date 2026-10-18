@@ -1,0 +1,44 @@
+# 感知通道变体：fov（R-026 承载 `perception=fov` 正例）
+#
+# 与 config/perception_sensors.yaml（nominal，标称 FOV）对照：本文件**收窄视场角**
+# （hfov_deg: 30 / vfov_deg: 20），使目标偏出视场时 air_perception 观测**缺失**
+# （R-026 fov 轴正例）；drop_prob 保持 0（只变化 FOV 因子）。
+# 诚实口径：真值派生感知仿真，非真实传感器标定（ADR-0020）。
+sensors:
+  - id: air_eo_front
+    sigma_xy_m: 0.10
+    sigma_z_m: 0.12
+    latency_s: 0.0
+    drop_prob: 0.0
+    boresight_body: [1.0, 0.0, 0.0]
+    hfov_deg: 30.0                    # 收窄（正例）
+    vfov_deg: 20.0
+    range_min_m: 0.30
+    range_max_m: 12.0
+    corr_xy: 0.0
+    noise_tau_s: 0.0
+    bias_m: [0.0, 0.0, 0.0]
+    drop_burst_prob: 0.0
+    drop_burst_mean_s: 0.5
+    drop_burst_mean_gap_s: 5.0
+  - id: air_ir_top
+    sigma_xy_m: 0.20
+    sigma_z_m: 0.25
+    latency_s: 0.0
+    drop_prob: 0.0
+    boresight_body: [1.0, 0.0, -0.10]
+    hfov_deg: 30.0
+    vfov_deg: 20.0
+    range_min_m: 0.30
+    range_max_m: 12.0
+    corr_xy: 0.0
+    noise_tau_s: 0.0
+    bias_m: [0.0, 0.0, 0.0]
+    drop_burst_prob: 0.0
+    drop_burst_mean_s: 0.5
+    drop_burst_mean_gap_s: 5.0
+
+perception_model:
+  occlusion:
+    enabled: false
+    pad_m: 0.0

@@ -4,11 +4,19 @@
 //   * /agc/targets   (TargetTrackArray，source=air_fusion)  —— 被空中跟踪 / 地面规划消费
 //   * /agc/obstacles (ObstacleTrackArray，source=air_fusion) —— 障碍源为 air_fusion 时被规划消费
 //
-// 门控（对齐旧树行为）：新鲜度（age ≤ target_max_age_s）、置信度（≥ confidence_min）、
-//   空间一致性（与参考估计距离 > gate_m 判离群）。
-// 融合：仅对 inlier 做逆方差加权；因各通道同源、误差相关，协方差以 correlated_pad_m 设下界，
-//   不按 1/N 缩小。无有效观测发空数组，绝不刷新旧观测时间。
-// 障碍：按 obstacle_id 关联 inlier，取并集 + 保守外扩，不做 yaw 环绕下的加权平均。
+// 门控（对齐旧树行为 + R-005 诚实时间口径）：新鲜度（0 ≤ age ≤ target_max_age_s，**拒绝未来戳**）、
+//   置信度（≥ confidence_min）、空间一致性（与参考估计距离 > gate_m 判离群）。
+// 时间口径（R-005）：多通道候选**先对齐到共同时刻** t_ref = max(候选采样时刻) —— 仅保留与 t_ref
+//   相差 ≤ time_sync_tol_s 的「同代 cohort」；再把各候选按**上一次融合速度**一步常速传播到 t_ref
+//   （冷启动速度为 0，等价不平移），然后做逆方差加权。输出 track 的 header.stamp = t_ref（真实采样
+//   时刻），不再用最大戳冒充「最新」。
+// 不确定度（R-005）：各通道同源、误差相关，协方差以 max(min_sigma_inlier, correlated_pad_m) 设下界，
+//   **不按 1/N 缩小**（相关误差不随通道数变小）；confidence 由该诚实 σ 派生。
+// 速度（R-005）：基于**时间一致**样本 —— 以上次融合的 t_ref 与位置对当前 t_ref 差分；重发 / 同刻
+//   （epoch 未前进，dt_e < min_velocity_dt_s）保持上次速度，避免重发样本差分出归零 / 跳变；冷启动为 0。
+// 障碍（R-005）：按 obstacle_id 关联候选，逐个候选 OBB 换算为**轴对齐包围盒**后取**并集**
+//   （可证明包含各候选 OBB），输出轴对齐并集盒 + 保守外扩；不再仅取最大尺寸加 pad。
+// 无有效观测发空数组，绝不刷新旧观测时间。
 //
 // 新鲜度不变量（spec R6）：本节点内部门控 target_max_age_s（默认 0.35 s）SHALL ≤
 //   契约 C10 消费侧冻结阈值（0.5 s）—— 感知侧冻结不晚于消费侧；两值语义不同，不合并。
@@ -64,6 +72,8 @@ public:
     correlated_pad_m_ = declare_parameter<double>("correlated_pad_m", 0.05);
     cold_start_min_agree_ = declare_parameter<int>("cold_start_min_agree", 2);
     ref_hold_s_ = declare_parameter<double>("reference_hold_s", 1.0);
+    time_sync_tol_s_ = declare_parameter<double>("time_sync_tol_s", 0.15);
+    min_velocity_dt_s_ = declare_parameter<double>("min_velocity_dt_s", 0.02);
     tol_m_ = declare_parameter<double>("confidence_tolerance_m", 0.25);
     target_source_ = declare_parameter<std::string>("target_source", "gt_adapter");
     obstacle_source_ = declare_parameter<std::string>("obstacles_source", "air_fusion");
@@ -136,18 +146,34 @@ private:
       std::string sensor;
       agc_msgs::msg::TargetObservation o;
       double sigma{0.1};
+      double stamp{0.0};
     };
     std::vector<Cand> cands;
     for (const auto & kv : state_) {
       if (!kv.second.has_target) {continue;}
       const auto & o = kv.second.target;
-      const double age = now_s - rclcpp::Time(o.header.stamp).seconds();
-      if (age > target_max_age_) {continue;}
+      const double st = rclcpp::Time(o.header.stamp).seconds();
+      const double age = now_s - st;
+      if (age < 0.0) {continue;}              // R-005：拒绝未来戳
+      if (age > target_max_age_) {continue;}  // 过期
       if (o.confidence < confidence_min_) {continue;}
-      cands.push_back(Cand{kv.first, o, sigmaOf(o)});
+      cands.push_back(Cand{kv.first, o, sigmaOf(o), st});
     }
 
-    if (static_cast<int>(cands.size()) < std::max(1, min_sources_)) {
+    if (cands.empty()) {
+      publishEmptyTargets(now_s);
+      has_last_fused_ = false;
+      return;
+    }
+
+    // R-005 共同时刻对齐：t_ref = max(候选采样时刻)；仅保留 (t_ref - t_i) <= time_sync_tol_s 的同代 cohort
+    double t_ref = 0.0;
+    for (const auto & c : cands) {t_ref = std::max(t_ref, c.stamp);}
+    std::vector<Cand> cohort;
+    for (const auto & c : cands) {
+      if ((t_ref - c.stamp) <= time_sync_tol_s_) {cohort.push_back(c);}
+    }
+    if (static_cast<int>(cohort.size()) < std::max(1, min_sources_)) {
       publishEmptyTargets(now_s);
       has_last_fused_ = false;
       return;
@@ -157,8 +183,8 @@ private:
     if (has_last_fused_ && (now_s - last_fused_sim_) <= ref_hold_s_) {
       rx = last_fused_x_; ry = last_fused_y_;
     } else {
-      // 冷启动：按 gate_m 单链聚类取最大簇作参考
-      const int n = static_cast<int>(cands.size());
+      // 冷启动：按 gate_m 单链聚类取最大簇作参考（在 cohort 上）
+      const int n = static_cast<int>(cohort.size());
       std::vector<int> label(n, -1);
       int nc = 0;
       for (int i = 0; i < n; ++i) {
@@ -167,8 +193,8 @@ private:
         for (int j = i + 1; j < n; ++j) {
           if (label[j] != -1) {continue;}
           const double d = std::hypot(
-            cands[i].o.pose.pose.position.x - cands[j].o.pose.pose.position.x,
-            cands[i].o.pose.pose.position.y - cands[j].o.pose.pose.position.y);
+            cohort[i].o.pose.pose.position.x - cohort[j].o.pose.pose.position.x,
+            cohort[i].o.pose.pose.position.y - cohort[j].o.pose.pose.position.y);
           if (d <= gate_m_) {label[j] = nc;}
         }
         ++nc;
@@ -187,17 +213,17 @@ private:
       int cnt = 0;
       for (int i = 0; i < n; ++i) {
         if (label[i] != best_c) {continue;}
-        sx += cands[i].o.pose.pose.position.x;
-        sy += cands[i].o.pose.pose.position.y;
+        sx += cohort[i].o.pose.pose.position.x;
+        sy += cohort[i].o.pose.pose.position.y;
         ++cnt;
       }
       rx = sx / std::max(1, cnt);
       ry = sy / std::max(1, cnt);
     }
 
-    // 空间一致性门控
+    // 空间一致性门控（在 cohort 上）
     std::vector<const Cand *> inliers;
-    for (const auto & c : cands) {
+    for (const auto & c : cohort) {
       const double d = std::hypot(
         c.o.pose.pose.position.x - rx, c.o.pose.pose.position.y - ry);
       if (d <= gate_m_) {inliers.push_back(&c);}
@@ -207,34 +233,51 @@ private:
       has_last_fused_ = false;
       return;
     }
-
-    double sw = 0, swx = 0, swy = 0, swz = 0, best_stamp = 0;
-    const Cand * bestc = inliers[0];
+    const Cand * bestc = inliers[0];  // 姿态取 confidence 最大的候选（现逻辑）
     for (const Cand * c : inliers) {
-      const double w = 1.0 / std::max(1e-6, c->sigma * c->sigma);
-      sw += w;
-      swx += w * c->o.pose.pose.position.x;
-      swy += w * c->o.pose.pose.position.y;
-      swz += w * c->o.pose.pose.position.z;
-      const double st = rclcpp::Time(c->o.header.stamp).seconds();
-      best_stamp = std::max(best_stamp, st);
       if (c->o.confidence > bestc->o.confidence) {bestc = c;}
     }
+
+    // R-005：按模型（上一次融合速度）一步常速传播到共同时刻 t_ref，再逆方差加权
+    // (t_ref - t_i) ∈ [0, time_sync_tol_s]；冷启动速度为 0（不传播）
+    const double vmx = has_last_fused_ ? last_fused_vx_ : 0.0;
+    const double vmy = has_last_fused_ ? last_fused_vy_ : 0.0;
+    const double vmz = has_last_fused_ ? last_fused_vz_ : 0.0;
+    double sw = 0, swx = 0, swy = 0, swz = 0, min_sigma = 1e9;
+    for (const Cand * c : inliers) {
+      const double dt = t_ref - c->stamp;  // ∈ [0, time_sync_tol_s]
+      const double px = c->o.pose.pose.position.x + vmx * dt;
+      const double py = c->o.pose.pose.position.y + vmy * dt;
+      const double pz = c->o.pose.pose.position.z + vmz * dt;
+      const double w = 1.0 / std::max(1e-6, c->sigma * c->sigma);
+      sw += w;
+      swx += w * px;
+      swy += w * py;
+      swz += w * pz;
+      min_sigma = std::min(min_sigma, c->sigma);
+    }
     const double fx = swx / sw, fy = swy / sw, fz = swz / sw;
-    const double sigma_fused = std::max(std::sqrt(1.0 / sw), correlated_pad_m_);
+    // R-005 协方差诚实地板：相关误差不按 1/N 收缩（通道同源），取各 inlier σ 的最小值为下界
+    const double sigma_fused = std::max(min_sigma, correlated_pad_m_);
     const double conf_fused = coverage(sigma_fused);
 
-    std::array<double, 3> v{{0.0, 0.0, 0.0}};
-    if (has_last_fused_ && (now_s - last_fused_sim_) > 1e-3) {
-      const double dt = now_s - last_fused_sim_;
-      v = {{(fx - last_fused_x_) / dt, (fy - last_fused_y_) / dt, (fz - last_fused_z_) / dt}};
-    }
+    // R-005 速度：基于时间一致样本；重发 / 同刻（epoch 未前进）保持上次速度
+    double vx = last_fused_vx_, vy = last_fused_vy_, vz = last_fused_vz_;
+    if (has_last_fused_) {
+      const double dt_e = t_ref - last_fused_tref_;
+      if (dt_e >= min_velocity_dt_s_) {
+        vx = (fx - last_fused_x_) / dt_e;
+        vy = (fy - last_fused_y_) / dt_e;
+        vz = (fz - last_fused_z_) / dt_e;
+      }  // else：同刻 / 重发，保持上次速度，避免差分出归零 / 跳变
+    }  // 冷启动：保持 0
 
     agc_msgs::msg::TargetTrackArray arr;
     arr.header.stamp = rclcpp::Time(static_cast<int64_t>(now_s * 1e9), get_clock()->get_clock_type());
     arr.header.frame_id = world_frame_;
     agc_msgs::msg::TargetTrack tr;
-    tr.header.stamp = rclcpp::Time(static_cast<int64_t>(best_stamp * 1e9), get_clock()->get_clock_type());
+    // R-005：track 时刻 = 对齐后的共同时刻 t_ref（最新候选的真实采样时刻），不用 max 戳冒充
+    tr.header.stamp = rclcpp::Time(static_cast<int64_t>(t_ref * 1e9), get_clock()->get_clock_type());
     tr.header.frame_id = world_frame_;
     tr.target_id = target_id_;
     tr.pose.pose.position.x = fx;
@@ -242,9 +285,9 @@ private:
     tr.pose.pose.position.z = fz;
     tr.pose.pose.orientation = agc::quatFromYaw(agc::yawFromQuat(bestc->o.pose.pose.orientation));
     diagCov3(sigma_fused, std::max(sigma_fused, correlated_pad_m_), tr.pose.covariance);
-    tr.twist.twist.linear.x = v[0];
-    tr.twist.twist.linear.y = v[1];
-    tr.twist.twist.linear.z = v[2];
+    tr.twist.twist.linear.x = vx;
+    tr.twist.twist.linear.y = vy;
+    tr.twist.twist.linear.z = vz;
     diagCov3(0.05, 0.05, tr.twist.covariance);
     tr.confidence = static_cast<float>(conf_fused);
     tr.source = kSource;
@@ -253,6 +296,8 @@ private:
 
     last_fused_sim_ = now_s;
     last_fused_x_ = fx; last_fused_y_ = fy; last_fused_z_ = fz;
+    last_fused_tref_ = t_ref;
+    last_fused_vx_ = vx; last_fused_vy_ = vy; last_fused_vz_ = vz;
     has_last_fused_ = true;
   }
 
@@ -273,6 +318,7 @@ private:
       for (const auto & okv : kv.second.obstacles) {
         const auto & o = okv.second;
         const double age = now_s - rclcpp::Time(o.header.stamp).seconds();
+        if (age < 0.0) {continue;}  // R-005：拒绝未来戳
         if (age > obs_max_age_ || o.confidence < confidence_min_) {continue;}
         by_id[okv.first].push_back(&o);
       }
@@ -283,36 +329,40 @@ private:
     arr.header.frame_id = world_frame_;
     for (const auto & kv : by_id) {
       if (kv.second.empty()) {continue;}
-      double sw = 0, swx = 0, swy = 0, swz = 0, best_stamp = 0, best_conf = -1, best_yaw = 0;
-      double sx = 0, sy = 0, sz = 0;
+      // R-005 可证明包含各候选的保守包络：逐个候选 OBB -> 各自轴对齐包围盒 -> 求并集
+      double minx = 1e18, maxx = -1e18, miny = 1e18, maxy = -1e18, minz = 1e18, maxz = -1e18;
+      double best_stamp = 0.0, min_sigma = 1e9;
       for (const auto * o : kv.second) {
-        const double sigma = sigmaOfObs(*o);
-        const double w = 1.0 / std::max(1e-6, sigma * sigma);
-        sw += w;
-        swx += w * o->pose.pose.position.x;
-        swy += w * o->pose.pose.position.y;
-        swz += w * o->pose.pose.position.z;
+        const double hx = o->size.x * 0.5;
+        const double hy = o->size.y * 0.5;
+        const double hz = o->size.z * 0.5;
+        const double th = agc::yawFromQuat(o->pose.pose.orientation);
+        const double ct = std::cos(th), stt = std::sin(th);
+        const double ex = std::abs(hx * ct) + std::abs(hy * stt);
+        const double ey = std::abs(hx * stt) + std::abs(hy * ct);
+        const double ez = hz;
+        const double cx = o->pose.pose.position.x;
+        const double cy = o->pose.pose.position.y;
+        const double cz = o->pose.pose.position.z;
+        minx = std::min(minx, cx - ex); maxx = std::max(maxx, cx + ex);
+        miny = std::min(miny, cy - ey); maxy = std::max(maxy, cy + ey);
+        minz = std::min(minz, cz - ez); maxz = std::max(maxz, cz + ez);
         best_stamp = std::max(best_stamp, rclcpp::Time(o->header.stamp).seconds());
-        sx = std::max(sx, static_cast<double>(o->size.x));
-        sy = std::max(sy, static_cast<double>(o->size.y));
-        sz = std::max(sz, static_cast<double>(o->size.z));
-        if (o->confidence > best_conf) {
-          best_conf = o->confidence;
-          best_yaw = agc::yawFromQuat(o->pose.pose.orientation);
-        }
+        min_sigma = std::min(min_sigma, sigmaOfObs(*o));
       }
       agc_msgs::msg::ObstacleTrack t;
       t.header.stamp = rclcpp::Time(static_cast<int64_t>(best_stamp * 1e9), get_clock()->get_clock_type());
       t.header.frame_id = world_frame_;
       t.obstacle_id = kv.first;
-      t.pose.position.x = swx / sw;
-      t.pose.position.y = swy / sw;
-      t.pose.position.z = swz / sw;
-      t.pose.orientation = agc::quatFromYaw(best_yaw);
-      t.size.x = sx + obstacle_pad_m_;
-      t.size.y = sy + obstacle_pad_m_;
-      t.size.z = sz;
-      const double sigma_fused = std::max(std::sqrt(1.0 / std::max(sw, 1e-9)), correlated_pad_m_);
+      t.pose.position.x = 0.5 * (minx + maxx);
+      t.pose.position.y = 0.5 * (miny + maxy);
+      t.pose.position.z = 0.5 * (minz + maxz);
+      t.pose.orientation = agc::quatFromYaw(0.0);  // 轴对齐并集盒
+      t.size.x = (maxx - minx) + obstacle_pad_m_;
+      t.size.y = (maxy - miny) + obstacle_pad_m_;
+      t.size.z = (maxz - minz);
+      // R-005 协方差诚实地板：相关误差不按 1/N 收缩；ObstacleTrack 无协方差字段，仅影响 confidence
+      const double sigma_fused = std::max(min_sigma, correlated_pad_m_);
       t.confidence = static_cast<float>(coverage(sigma_fused));
       t.source = kSource;
       arr.tracks.push_back(t);
@@ -334,11 +384,12 @@ private:
   std::string obstacle_topic_, world_frame_;
   double hz_{10.0}, target_max_age_{0.35}, obs_max_age_{0.35}, gate_m_{1.5};
   double confidence_min_{0.5}, obstacle_pad_m_{0.05}, correlated_pad_m_{0.05};
-  double ref_hold_s_{1.0}, tol_m_{0.25};
+  double ref_hold_s_{1.0}, tol_m_{0.25}, time_sync_tol_s_{0.15}, min_velocity_dt_s_{0.02};
   int min_sources_{1}, cold_start_min_agree_{2};
 
   bool has_last_fused_{false};
   double last_fused_sim_{0.0}, last_fused_x_{0.0}, last_fused_y_{0.0}, last_fused_z_{0.0};
+  double last_fused_tref_{0.0}, last_fused_vx_{0.0}, last_fused_vy_{0.0}, last_fused_vz_{0.0};
 
   rclcpp::Publisher<agc_msgs::msg::TargetTrackArray>::SharedPtr pub_targets_;
   rclcpp::Publisher<agc_msgs::msg::ObstacleTrackArray>::SharedPtr pub_obstacles_;

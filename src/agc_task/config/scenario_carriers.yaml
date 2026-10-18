@@ -1,0 +1,77 @@
+# 场景轴 → 承载者登记表（评审 R-026；ADR-0041）
+#
+# 目的：把 `scenarios.yaml` 里**声明的轴值**映射到**承载它的节点 / 参数 / 文件**，
+# 由顶层统一入口 w6.launch.py（经共享模块 w6_composition.py）**启动时校验**：
+#   * 声明轴值**必须**在本表有 `supported: true` 的承载者；
+#   * 无承载者（`supported: false`，如 `obstacle=dynamic`）→ launch **显式拒绝运行**；
+#   * 承载者需**空中链路**（`requires_air_link: true`）而当前后端为轻量栈 → 允许运行但
+#     覆盖账本标 `not_carried`（**不**以命名冒充已执行）。
+#
+# 约定：
+#   * `sensors_file` / `obstacles_file` 为 **agc_perception/config 下的文件名**，由上层 launch
+#     解析为绝对路径经 perception_bringup 单一注入（契约 #params）。
+#   * `world_obstacles` 传给 world_bringup：`static` 用含 pole_* 的世界，`none` 用去除 pole_* 的世界。
+axes:
+  target_motion:
+    static:
+      supported: true
+      carrier: "intruder_driver (px4_ns=px4_1)"
+      requires_air_link: true
+    linear:
+      supported: true
+      carrier: "intruder_driver (px4_ns=px4_1)"
+      requires_air_link: true
+    maneuver:
+      supported: true
+      carrier: "intruder_driver (px4_ns=px4_1)"
+      requires_air_link: true
+
+  obstacle:
+    none:
+      supported: true
+      carrier: "world_bringup 世界生成 + obstacles_file"
+      world_obstacles: none
+      obstacles_file: obstacles_none.yaml
+    static:
+      supported: true
+      carrier: "world_bringup 世界生成 + obstacles_file"
+      world_obstacles: static
+      obstacles_file: obstacles.yaml
+    dynamic:
+      supported: false
+      carrier: null
+      reason: "无动态障碍执行节点（R-026 不新建执行节点、不改世界物理）"
+
+  perception:
+    nominal:
+      supported: true
+      carrier: "target_source=air_fusion + 传感器通道参数 (drop_prob=0 / 标称 FOV)"
+      requires_air_link: true
+      sensors_file: perception_sensors.yaml
+    dropout:
+      supported: true
+      carrier: "target_source=air_fusion + 传感器通道参数 (drop_prob>0)"
+      requires_air_link: true
+      sensors_file: perception_sensors_dropout.yaml
+    fov:
+      supported: true
+      carrier: "target_source=air_fusion + 传感器通道参数 (收窄 hfov/vfov)"
+      requires_air_link: true
+      sensors_file: perception_sensors_fov.yaml
+
+  outcome:
+    tracking:
+      supported: true
+      carrier: "task_manager"
+    capture:
+      supported: true
+      carrier: "task_manager + capture_adjudicator"
+    jam:
+      supported: true
+      carrier: "task_manager + jammer"
+    unreachable:
+      supported: true
+      carrier: "task_manager"
+    timeout:
+      supported: true
+      carrier: "task_manager"

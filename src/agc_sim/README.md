@@ -1,13 +1,15 @@
 # agc_sim（W2 · 仿真世界与模型）
 
 单一世界 + 车/目标模型 + `ros_gz` 桥。分两段交付：**W2-min**（供 M0）与 **W2-full**（传感器链路，待补）。
+> **W5 打补丁（平台换装，[ADR-0021](../../docs/adr/0021-ground-safety-thresholds-and-platform-recalibration.md)）**：地面车由 TB3 级小车换装为 **Velodyne 语义差速 UGV**，基座取 Gazebo Fuel 官方模型 **Clearpath Robotics Husky A200**（来源 / 许可见 [第三方资产与许可](../../docs/conventions/第三方资产与许可.md)；保形换装：仅换视觉 mesh + 碰撞/惯量并 1:1 移植尺度，驱动内核仍为 gz-sim `DiffDrive`）。不变量保持：`car/base_link`、`car/lidar_link`（`/agc/car_lidar`）、`car/capture_net`、`car/jammer`、桥入/出、`config/car.yaml` 唯一参数源。
 
 ## 目录
 
 ```
 agc_sim/
 ├── worlds/agc_world.sdf                    # 单一世界（地面/光照/静态障碍内联）
-├── models/agc_car/agc_car.sdf.xacro        # 地面车（差速两轮 + 2 caster + DiffDrive）
+├── models/agc_car/agc_car.sdf.xacro        # 地面平台（Husky 级 4 轮差速 UGV + DiffDrive；W5 换装）
+├── models/agc_car/meshes/*.stl             # Fuel 官方网格（来源 / 许可见 docs/conventions/第三方资产与许可.md）
 ├── models/intruder_uav/intruder_uav.sdf.xacro  # 目标被动模型（失重、无插件）
 ├── config/{car,target}.yaml                # 模型与 spawn 参数（唯一来源）
 ├── config/bridge.yaml                      # ros_gz_bridge 声明式配置
@@ -30,7 +32,12 @@ ros2 launch agc_sim world_bringup.launch.py gz_args:='-s -r -v 3 <world>'   # �
 |---|---|---|---|---|---|
 | `/clock` | `/clock` | `rosgraph_msgs/msg/Clock` | `gz.msgs.Clock` | GZ→ROS | 默认（reliable） |
 | `/agc/sim/ground_odom_raw` | `/model/agc_car/odometry` | `nav_msgs/msg/Odometry` | `gz.msgs.Odometry` | GZ→ROS | 默认 |
-| `/model/agc_car/cmd_vel` | `/model/agc_car/cmd_vel` | `geometry_msgs/msg/Twist` | `gz.msgs.Twist` | ROS→GZ | 默认（reliable） |
+| `/model/agc_car/cmd_vel` | `/agc/sim/cmd_intent` | `geometry_msgs/msg/Twist` | `gz.msgs.Twist` | ROS→GZ | 默认（reliable） |
+
+> R-009（[ADR-0025](../../docs/adr/0025-gz-side-terminal-failstop-deadman-plugin.md)）：ROS 侧话题名不变
+> （`/model/agc_car/cmd_vel`），但 gz 侧改桥到**意图话题** `/agc/sim/cmd_intent`；GZ 侧守门人插件
+> `agc_cmd_deadman` 订阅该意图（fresh→转发、stale→归零），再写 `DiffDrive` 默认订阅的 gz 话题
+> `/model/agc_car/cmd_vel`（该话题的唯一写入者是插件）。
 
 **服务**（CLI 形式桥接，见 `config/bridge.yaml` 注释）：
 
@@ -67,7 +74,7 @@ SceneBroadcaster → Sensors`），与 Nav2 官方 `tb3_sandbox` 写法一致。
 
 ## 拦截相关模型（W2-interception）
 
-- **可控目标**（`intruder_uav`，R9）：挂 GZ `VelocityControl`，外部经 gz `/model/intruder_uav/cmd_vel`（ROS `/agc/sim/target_cmd_vel`）发 `Twist` 即可脚本化驱动（保持失重、半运动学）。**driver / 干扰注入节点属 W6**（ADR-0016）。
+- **可控目标**（`intruder_uav`，R9）：模型改**双模 xacro**（`controlled` 参）——W6 前置 P 起由**第二 PX4 SITL 实例** attach 并驱动（`agc_task/intruder_driver` 经 uXRCE / `px4_msgs`）；桥 `/agc/sim/target_cmd_vel`（gz `VelocityControl` 通道）**已退役**（`.trae/specs/w6-task-eval/spec.md` 前置 P；ADR-0016）。
 - **地面拦截载荷**（`agc_car`，R10）：`car/capture_net`（直径 2 m 圆面，法线 `+x`，供 W6 物理捕获"穿越判据"）与 `car/jammer`（行为级干扰发射器）。二者均为**轻量、无 collision** 附件，参数（`capture_net_radius` / `payload_mass`）落 `config/car.yaml` 并由 launch 单一设置；**捕获裁决与干扰行为属 W6**（ADR-0015）。
 
 ## 物理与驱动

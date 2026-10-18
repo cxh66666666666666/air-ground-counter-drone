@@ -14,6 +14,9 @@
 /experiments/*/*/*
 !/experiments/*/*/config/
 
+# ===== 证据不可变归档：大归档与侧车不入 git（ADR-0064）=====
+/experiments/_archive/
+
 # ===== Python 缓存 =====
 __pycache__/
 *.py[cod]

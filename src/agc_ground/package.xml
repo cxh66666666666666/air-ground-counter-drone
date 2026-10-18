@@ -3,17 +3,39 @@
 <package format="3">
   <name>agc_ground</name>
   <version>0.0.0</version>
-  <description>AGC 地面导航与安全层（W5）：RL 主控链路、Nav2 collision_monitor 安全层、离线基线</description>
+  <description>AGC 地面导航与安全层（W5）：Nav2 collision_monitor 安全层、RL 主控链路、离线对照基线</description>
   <maintainer email="agc@example.com">AGC Dev</maintainer>
   <license>Proprietary</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>agc_msgs</depend>
+  <!-- W5-c 离线基线：共享控制层 + Nav2 planner 插件（ADR-0008 / ADR-0018） -->
+  <depend>agc_control</depend>
+  <depend>pluginlib</depend>
+  <depend>tf2_ros</depend>
+  <depend>eigen3_cmake_module</depend>
+  <!-- ground_baseline 直接链接 Eigen3::Eigen（CMakeLists `find_package(Eigen3)`） -->
+  <build_depend>eigen</build_depend>
+  <build_export_depend>eigen</build_export_depend>
+  <exec_depend>eigen</exec_depend>
+  <depend>nav2_core</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>nav2_util</depend>
+
+  <exec_depend>nav2_collision_monitor</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_navfn_planner</exec_depend>
+  <exec_depend>agc_rl</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

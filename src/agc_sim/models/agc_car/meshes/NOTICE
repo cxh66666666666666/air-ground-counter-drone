@@ -1,0 +1,29 @@
+agc_car meshes —— 第三方资产来源与署名（NOTICE）
+=================================================
+
+本目录 *.stl 为**第三方资产**；来源 / 许可 / 署名 / 内容哈希以仓库清单为准：
+  docs/conventions/第三方资产与许可.md
+
+上游来源与署名
+--------------
+  上游模型：Clearpath Robotics Husky A200
+  owner   ：OpenRobotics（Gazebo Fuel 官方模型）
+  取得方式：Gazebo Fuel 官方模型下载，按 ADR-0021(d) 保形换装（仅取视觉 mesh）
+
+许可状态：未决（unresolved）
+  候选许可：BSD
+  说明：上游 Clearpath Husky ROS 资产族（husky_description / husky_gazebo /
+        clearpath_gz）在 ROS Wiki / ROS Index 标 BSD（要求保留版权 / 许可署名）；
+        Fuel 模型页面的确切资源 id / 下载版本 / 随附 LICENSE 文本尚未取回。
+        故此处据实登记为「候选 BSD + 未决」，**不**作未经验证的许可断言。
+  旧注释（已作废）：agc_car.sdf.xacro 曾自称 mesh 为 CC0 v1.0 —— 属未核实断言，已移除。
+
+内容哈希
+--------
+  逐文件 sha256 见清单 docs/conventions/第三方资产与许可.md（机器可读 yaml 块）。
+  本目录 mesh 文件内容**未**被修改；本文件仅为来源 / 署名 / 许可状态说明。
+
+许可分列
+--------
+  自有包（agc_*）的许可为 Proprietary —— **仅**适用于自有代码，
+  **不**外推到本目录第三方资产。

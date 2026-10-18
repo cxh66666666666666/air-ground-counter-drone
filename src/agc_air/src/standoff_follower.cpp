@@ -34,20 +34,20 @@ public:
 protected:
   CallbackReturn on_configure_impl() override
   {
-    world_frame_ = declare_parameter<std::string>("world_frame", "world");
-    odom_topic_ = declare_parameter<std::string>("odom_topic", "/agc/air/odom");
-    target_topic_ = declare_parameter<std::string>("target_topic", "/agc/targets");
-    out_topic_ = declare_parameter<std::string>("tracking_ref_topic", "/agc/air/tracking_ref");
+    world_frame_ = declare_param_idempotent<std::string>("world_frame", "world");
+    odom_topic_ = declare_param_idempotent<std::string>("odom_topic", "/agc/air/odom");
+    target_topic_ = declare_param_idempotent<std::string>("target_topic", "/agc/targets");
+    out_topic_ = declare_param_idempotent<std::string>("tracking_ref_topic", "/agc/air/tracking_ref");
 
-    safe_min_ = declare_parameter<double>("safe_min", 8.0);
-    safe_max_ = declare_parameter<double>("safe_max", 15.0);
+    safe_min_ = declare_param_idempotent<double>("safe_min", 8.0);
+    safe_max_ = declare_param_idempotent<double>("safe_max", 15.0);
     // 跟踪高度：相对**参考基准**（trajectory_tracker 统一叠加高度基准偏移，见其接管处说明）
-    height_m_ = declare_parameter<double>("height", 2.5);
-    hysteresis_m_ = declare_parameter<double>("hysteresis", 1.0);
-    max_step_m_ = declare_parameter<double>("max_step_m", 0.1);
-    rate_hz_ = declare_parameter<double>("rate_hz", 20.0);
-    ref_max_age_s_ = declare_parameter<double>("ref_max_age_s", 0.5);
-    confidence_min_ = declare_parameter<double>("confidence_min", 0.5);
+    height_m_ = declare_param_idempotent<double>("height", 2.5);
+    hysteresis_m_ = declare_param_idempotent<double>("hysteresis", 1.0);
+    max_step_m_ = declare_param_idempotent<double>("max_step_m", 0.1);
+    rate_hz_ = declare_param_idempotent<double>("rate_hz", 20.0);
+    ref_max_age_s_ = declare_param_idempotent<double>("ref_max_age_s", 0.5);
+    confidence_min_ = declare_param_idempotent<double>("confidence_min", 0.5);
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       odom_topic_, rclcpp::SensorDataQoS(),

@@ -1,0 +1,10 @@
+# 空障碍真值（R-026 承载 `obstacle=none`；S-06 半径路径由真源 `obstacle=none` 派生）
+#
+# 几何真源（S-06；ADR-0062）= `agc_sim/config/world_geometry.yaml`。本文件是 **standalone
+# 回退副本**（`obstacle=none` 时的空静态先验），与真源在 none 轴下一致（空集）。
+#
+# 与 config/obstacles.yaml（静态先验 pole_1/pole_2）对照：当场景声明 `obstacle=none` 时，
+# world_bringup 生成**不含 pole_** 的世界，air_perception / map_adapter 亦从本文件加载
+# **空**静态先验，使「无障碍」因子在世界与感知两侧一致（无残留立柱）。
+# 诚实口径：真值派生静态先验（ADR-0020）。
+obstacles: []

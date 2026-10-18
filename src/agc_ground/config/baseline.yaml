@@ -1,0 +1,45 @@
+# agc_ground 离线对照基线参数（W5-c · R8）—— 由 ground_bringup.launch.py 单一注入
+#
+# 基线 = Nav2 planner 插件（pluginlib 复用 Nav2 `navfn_planner`）+ `agc_control` 的 LQR 控制器插件
+# （共用实现，未复制，ADR-0018 / ADR-0008 吸收点：planner/controller 的 plugin 抽象）。
+# 与 RL 主控（agc_rl）**互斥**：由 ground_bringup 的 `command_source` 单一选择，同一时刻仅一路下发。
+#
+# 内建 costmap：ground_baseline 自持 `nav2_costmap_2d::Costmap2DROS`（节点名 `costmap`），
+# 其分层参数取自 `config/costmap.yaml` 的 `costmap:` 段（同一参数源，避免复制）。
+
+ground_baseline:
+  ros__parameters:
+    base_frame_id: "car/base_link"
+    global_frame_id: "world"
+    odom_topic: "/agc/ground/odom"
+    goal_topic: "/agc/ground/goal"
+    # R-041：目标有效性 / 身份 / 时刻伴随诊断话题（std_msgs/String，transient_local，非命令者）；
+    # valid=false → 安全停车（fail-safe stop，先于路径跟随）。
+    goal_info_topic: "/agc/ground/goal_info"
+    state_topic: "/agc/task/state"
+    cmd_raw_topic: "/agc/ground/cmd_vel_raw"
+    path_topic: "/agc/ground/path"
+    rate_hz: 20.0
+    # planner 插件（pluginlib；复用 Nav2 planner，非自研）
+    planner_plugin: "nav2_navfn_planner::NavfnPlanner"
+    planner_id: "GridBased"
+    replan_period_s: 2.0
+    replan_displacement_m: 1.0
+    # 路径有效时限：超过则视为绑定失效并触发重规划（R-012）
+    max_path_age_s: 5.0
+    goal_reached_tol_m: 0.3
+    # 路径跟踪（LQR 参考点）
+    lookahead_m: 1.0
+    k_yaw: 1.5
+    reference_speed: 1.0
+    max_linear_velocity: 1.5
+    max_angular_velocity: 2.0
+    # 路径失效（规划失败 / 绑定破坏）时失效停车（fail-stop；默认 True）
+    stop_on_invalid: True
+    # LQR 控制器插件参数（`agc_control/LqrController`，前缀 `lqr.`）
+    lqr:
+      q_pos: 4.0
+      q_vel: 4.0
+      r: 1.0
+      dt: 0.05
+      acc_max: 4.0

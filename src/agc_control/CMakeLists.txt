@@ -49,6 +49,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_lqr_controller test/test_lqr_controller.cpp)
   target_link_libraries(test_lqr_controller
     agc_control agc_controller_plugins agc_trajectory_plugins rclcpp::rclcpp)
+
+  # R-038：LQR 配置合法性 / DARE 收敛**失败型**验证（不写镜像实现测试）
+  ament_add_gtest(test_lqr_validation test/test_lqr_validation.cpp)
+  target_link_libraries(test_lqr_validation
+    agc_control agc_controller_plugins rclcpp::rclcpp)
 endif()
 
 ament_export_include_directories(include)

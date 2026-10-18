@@ -2,6 +2,11 @@
 <!--
   agc_world —— AGC 空地协同的唯一世界（GZ Sim / Harmonic，W2-min）
 
+  **base world**（评审 S-06；ADR-0062）：本文件**不含**静态障碍 `pole_*` 块，是
+  障碍生成所依据的 base。静态障碍几何的唯一真源为 `config/world_geometry.yaml`，
+  由 `world_bringup.launch.py` 按 `world_obstacles`（`static`/`none`）**注入 / 不注入**
+  障碍模型生成运行期世界（`none` 直接用本 base；`static` 生成 base + pole 临时世界）。
+
   设计要点（对齐旧树行为事实，WHAT；实现为 GZ Sim 全新重写，HOW 不继承）：
     * 单一世界：障碍在运行期由场景复位 spawn / toggle，不维护"静态/动态"两份 world。
     * 基准坐标系 ENU（+x 东、+y 北、+z 上），单位 m / m/s / rad。
@@ -11,6 +16,7 @@
     * 地面车 agc_car 与目标 intruder_uav **不在本 world 内**：由 world_bringup.launch.py
       经 ros_gz_sim create 按 config/*.yaml 参数 spawn（参数单一来源）。
     * 静态障碍 pole_1 / pole_2 的形态（0.3×0.3×3）沿用旧树；pose 于 **W3 打补丁**重排入 80×80 作业区（ADR-0019）。
+      几何值现**只**存于 `config/world_geometry.yaml`（真源上移，S-06）。
     * **W3 打补丁**：补 PX4 必需系统插件 + `spherical_coordinates`；作业区放大到 80×80（车/目标 spawn 分离 ~30 m）。
 -->
 <sdf version="1.8">
@@ -84,41 +90,8 @@
       <render_engine>ogre2</render_engine>
     </plugin>
 
-    <!-- 静态障碍 pole_1（W3 打补丁：重排入 80×80 作业区，供空中自避障验证；形态沿用旧树 0.3×0.3×3） -->
-    <model name="pole_1">
-      <static>true</static>
-      <pose>0 -6 1.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>0.3 0.3 3</size></box></geometry>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>0.3 0.3 3</size></box></geometry>
-          <material>
-            <ambient>1 0 0 1</ambient>
-            <diffuse>1 0 0 1</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
-
-    <!-- 静态障碍 pole_2（W3 打补丁：重排入 80×80 作业区，供空中自避障验证；形态沿用旧树 0.3×0.3×3） -->
-    <model name="pole_2">
-      <static>true</static>
-      <pose>6 6 1.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>0.3 0.3 3</size></box></geometry>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>0.3 0.3 3</size></box></geometry>
-          <material>
-            <ambient>0 0 1 1</ambient>
-            <diffuse>0 0 1 1</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
+    <!-- 静态障碍 pole_1 / pole_2 **不**在本 base world 内：几何真源见 config/world_geometry.yaml，
+         由 world_bringup.launch.py 生成运行期世界时按 world_obstacles 注入（S-06；ADR-0062）。 -->
 
     <!-- WGS84 / ENU 基准（W3 打补丁）：PX4 NavSat 等所需，与 agc_world 的 ENU 基准一致。 -->
     <spherical_coordinates>

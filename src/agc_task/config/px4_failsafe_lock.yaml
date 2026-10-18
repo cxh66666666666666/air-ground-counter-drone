@@ -1,0 +1,5 @@
+# 运行时 PX4 failsafe 参数锁定（R-019 / ADR-0034）——单一真源（非 ROS 节点参数段）。
+# 由 scripts/lock_px4_failsafe_params.sh 生成 SITL 启动参数文件；记录于 run 证据。
+com_of_loss_t: 1.0    # COM_OF_LOSS_T（s）：offboard 丢失判定超时（PX4 v1.15.4 默认 1.0）
+com_obl_rc_act: 0     # COM_OBL_RC_ACT：offboard 丢失后动作（0=Position → nav_state POSCTL=2）
+nav_dll_act: 0        # NAV_DLL_ACT：数据链丢失动作（0=Disabled；因子③未实现，仅如实标注）

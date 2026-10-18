@@ -1,0 +1,49 @@
+# agc_rl 参数（W5-b）—— 由 rl_inference.launch.py 单一注入，节点不得覆写（契约 #params）
+#
+# RL 接口契约（obs / action 空间）见 `agc_rl/interface.py`；本文件只给**取值**。
+#   链路：ground_policy_rl → cmd_vel_raw → collision_monitor → 唯一执行口 → 中继 → GZ。
+#   RL 为地面主控（ADR-0004）；安全层为 Nav2 collision_monitor（ADR-0008）。
+
+ground_policy_rl:
+  ros__parameters:
+    base_frame: "car/base_link"
+    rate_hz: 20.0
+    odom_topic: "/agc/ground/odom"
+    scan_topic: "/agc/ground/scan"
+    goal_topic: "/agc/ground/goal"
+    state_topic: "/agc/task/state"
+    cmd_raw_topic: "/agc/ground/cmd_vel_raw"
+    # obs / action 空间（接口冻结，见 interface.py）
+    num_sectors: 12
+    lidar_max_range: 10.0
+    pose_norm_m: 10.0
+    track_norm_m: 5.0
+    # 策略加载路径：agc_rl/policies/ 下的文件名（改此值即换策略，行为变化可复现）
+    policy_file: "go_to_goal.json"
+    # R-010：四类必需输入的**独立寿命**（秒，节点只读、不得覆写；单调钟判龄）
+    #   task_auth / goal：task_manager 以 1 Hz 发布 → 寿命须 > 1 s（取 2.0 s）；
+    #   odom / scan：链路高频（桥 / 10 Hz）→ 0.5 s 足够且与 perception_collision 同口径。
+    input_timeout:
+      task_auth_s: 2.0
+      odom_s: 0.5
+      goal_s: 2.0
+      scan_s: 0.5
+    # action → cmd_vel 映射（interface.action_to_twist）
+    control:
+      reference_speed: 1.0
+      fast_speed: 1.3
+      min_offset: 0.3
+      # max_offset：R-011 C6 逃逸能力标定值（**米**）——差速车在反应窗口 T = 2.0 s
+      #   （Nav2 time_before_collision 上界，ADR-0021(b)）内的**实测**横向可达距离；标定口径见
+      #   docs/adr/0026-rl-action-conventions-and-ground-escape-calibration.md。
+      #   GUI 实跑：满速（左/右+加速，v=1.3 m/s）每轮最大横向可达 1.017 / 1.083 / 1.287 m
+      #   （3 次采样最小值 1.017 ≥ max_offset），故取 1.0；原 1.2 不可达（常速实测 ~0.9 m）。
+      #   非由参数名或理想横移（holonomic 平移）推定。
+      max_offset: 1.0
+      k_heading: 1.5
+      k_lateral: 0.8
+      max_yaw_rate: 1.0
+      # clearance_ref_m：净空参考值（**米**，与车前净空同量纲，R-011 量纲一致化）。
+      #   净空 ≥ 此值视为充足（取 min_offset）；低于此值线性增大偏移至 max_offset。
+      #   与 lidar_max_range（range 归一用的量程，无量纲）**无关**——改雷达量程不改变动作强度。
+      clearance_ref_m: 1.0

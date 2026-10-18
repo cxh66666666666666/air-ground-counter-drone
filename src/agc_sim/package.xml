@@ -18,6 +18,14 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
 
+  <!-- GZ 侧末端失效停车守门人（R-009，ADR-0025）：gz-sim System 插件，直连 gz-transport；
+       声明键取 vendor 包（对照 ros_gz_sim）：gz-sim8→gz_sim_vendor、gz-plugin2→gz_plugin_vendor、
+       gz-transport13→gz_transport_vendor、gz-msgs10→gz_msgs_vendor -->
+  <depend>gz_sim_vendor</depend>
+  <depend>gz_plugin_vendor</depend>
+  <depend>gz_transport_vendor</depend>
+  <depend>gz_msgs_vendor</depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>

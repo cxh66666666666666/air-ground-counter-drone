@@ -17,6 +17,17 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 OffboardInterface::OffboardInterface(rclcpp_lifecycle::LifecycleNode & node, const OffboardParams & params)
 : node_(node), params_(params)
 {
+  // 局部原点（R-003）：PX4 `TrajectorySetpoint.position` 在**局部 NED**（相对 EKF 原点），
+  // 而本接口对外收发的都是世界 ENU；发布前须减去该原点。取值与 px4_adapter 同源（launch 注入 spawn 位姿）。
+  // R-034：**幂等**声明（先 has_parameter）→ `cleanup→configure` 二轮不抛重复声明异常。
+  const auto origin_pose = node_.has_parameter("origin_pose") ?
+    node_.get_parameter("origin_pose").as_string() :
+    node_.declare_parameter<std::string>("origin_pose", "0,0,0.2,0,0,0");
+  if (!parseSpawnPositionXyz(origin_pose, origin_enu_)) {
+    RCLCPP_WARN(
+      node_.get_logger(), "origin_pose='%s' 解析失败 → 局部原点按 (0,0,0) 处理", origin_pose.c_str());
+    origin_enu_ = Vector3::Zero();
+  }
 }
 
 void OffboardInterface::configure()
@@ -73,6 +84,10 @@ void OffboardInterface::cleanup()
   sp_pub_.reset();
   cmd_pub_.reset();
   have_odom_ = false;
+  // R-035：写入记账清零（可再 configure/activate）。
+  setpoint_write_count_ = 0;
+  first_setpoint_write_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_setpoint_write_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 }
 
 std::uint64_t OffboardInterface::nowMicros() const
@@ -107,16 +122,24 @@ void OffboardInterface::sendSetpointNed(const Vector3 & pos_ned, const Vector3 &
   m.yaw = static_cast<float>(yaw_ned);
   m.yawspeed = kNaN;
   sp_pub_->publish(m);
+  // R-035：setpoint 写入记账（诊断）——首次写记录起点，末次写记录终点。
+  const auto t_write = node_.now();
+  if (setpoint_write_count_ == 0) {first_setpoint_write_ = t_write;}
+  last_setpoint_write_ = t_write;
+  ++setpoint_write_count_;
 }
 
 void OffboardInterface::publishSetpoint(const Vector3 & pos_enu, const Vector3 & vel_enu,
   const Vector3 & acc_cmd_enu, double yaw_enu)
 {
-  // 位置项含 0.5·a·dt² 前馈（spec R5）；世界系 ENU → PX4 NED
-  const Vector3 pos_enu_ff = pos_enu + 0.5 * acc_cmd_enu * params_.setpoint_dt * params_.setpoint_dt;
+  // 位置项含 0.5·a·dt² 前馈（spec R5）；
+  // 世界 ENU → 局部 ENU（减 EKF 局部原点，R-003）→ PX4 NED。速度/加速度是与原点无关的自由矢量。
+  const Vector3 pos_local_enu = pos_enu - origin_enu_;
+  const Vector3 pos_local_ff =
+    pos_local_enu + 0.5 * acc_cmd_enu * params_.setpoint_dt * params_.setpoint_dt;
 
   const auto enuToNed = [](const Vector3 & v) {return Vector3(v.y(), v.x(), -v.z());};
-  sendSetpointNed(enuToNed(pos_enu_ff), enuToNed(vel_enu), enuToNed(acc_cmd_enu),
+  sendSetpointNed(enuToNed(pos_local_ff), enuToNed(vel_enu), enuToNed(acc_cmd_enu),
     enuYawToPx4(yaw_enu));
 }
 
@@ -155,7 +178,17 @@ void OffboardInterface::sendOffboardMode()
 
 std::size_t OffboardInterface::countSetpointPublishers() const
 {
+  // R-035：**仅作告警**——图内省计数含**静默 publisher**、且 DDS 发现延迟不保证事件顺序，
+  // 故**不**单独决定控制权威（唯一权威由显式控制许可判定，见 ADR-0050）。
   return node_.count_publishers(params_.setpoint_topic);
+}
+
+double OffboardInterface::setpointRateHz() const
+{
+  // R-035：自写入速率（Hz）= 计数 /（末次 − 首次）；跨度 ≤ 0 → 0（单次写入无速率）。
+  const double span = (last_setpoint_write_ - first_setpoint_write_).seconds();
+  if (setpoint_write_count_ == 0 || span <= 0.0) {return 0.0;}
+  return static_cast<double>(setpoint_write_count_) / span;
 }
 
 }  // namespace agc_air

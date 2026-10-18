@@ -1,0 +1,48 @@
+# W6 C9 验收配置（shield_infeasible_rate 非零）：车**出生即处于立柱 pole_1（world (0,-6)）
+# 前方 1.7 m**（朝 -y），使安全层在已进入几何接触距离（前向扫描 ≤ contact_dist_m=2.0 m）时触发
+# STOP/SLOWDOWN —— 即"触发时不可行"事件，shield_infeasible_rate 应 > 0。
+# 说明：这是**故意的不可行故障注入**（正常场景安全层会提前停车 → rate 为 0，属预期）。
+task_manager:
+  ros__parameters:
+    world_name: "agc_world"
+    goal_topic: "/agc/ground/goal"
+    goal_x: 0.0
+    goal_y: -9.0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"
+    # 运行模式（R-001）：本验收走 m0_skeleton（无空中链路）→ 显式声明无空中域
+    air_present: false
+    ground_controller_name: "agc_rl"
+    t_max_s: 25.0
+
+scenario_reset:
+  ros__parameters:
+    world_name: "agc_world"
+    state_topic: "/agc/task/state"
+    car_start_topic: "/agc/scenario/car_start"
+    car_x: 0.0
+    car_y: -4.3
+    car_z: 0.010
+    car_yaw: -1.5707963267948966
+    target_x: 20.0
+    target_y: 20.0
+    target_z: 2.0
+    target_yaw: 0.0
+    spawn_clearance_min_m: 6.0
+
+run_logger:
+  ros__parameters:
+    experiments_root: "/home/chen/AGC/experiments"
+    git_root: "/home/chen/AGC"
+    campaign: "w6-task-eval"
+    scenario: "c9-infeasible"
+    seed: 0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"
+    ground_odom_topic: "/agc/ground/odom"
+    scan_topic: "/agc/ground/scan"
+    collision_monitor_state_topic: "/collision_monitor_state"
+    contact_dist_m: 2.0
+    ttc_min_s: 1.0

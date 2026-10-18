@@ -22,9 +22,15 @@ ground_odom_adapter:
     gt_topic: "/agc/gt/agc_car"
     odom_topic: "/agc/ground/odom"
     valid_topic: "/agc/ground/odom_valid"
+    # R-039（ADR-0054）：诊断话题（latched std_msgs/String，state / age / epoch；非 ABI）
+    diag_topic: "/agc/ground/odom_diag"
+    # R-039：reset epoch 源（与 scenario_reset 一致，Int32 transient_local）→ 速度历史清空
+    reset_epoch_topic: "/agc/scenario/reset_epoch"
     rate_hz: 30.0
     diff_window_s: 0.15
     odom_max_age_s: 0.5
+    # R-039：相邻真值样本位移跳变阈值（m）；超过即视为 teleport → 速度历史清空
+    reset_jump_clear_m: 0.5
 
 gt_adapter:
   ros__parameters:
@@ -47,6 +53,7 @@ air_perception:
     drone_odom_topic: "/agc/air/odom"
     obs_topic: "/agc/air/obs"
     obs_hz: 20.0
+    source_timeout_s: 0.3         # 感知源寿命：源采样时刻(Header.stamp)起算的失效期限（spec R-004）
     confidence_tolerance_m: 0.25
     seed: "0"
     # sensors_file / obstacles_file 由 launch 以绝对路径注入
@@ -64,6 +71,8 @@ air_fusion:
     correlated_pad_m: 0.05
     cold_start_min_agree: 2
     reference_hold_s: 1.0
+    time_sync_tol_s: 0.15        # R-005：共同时刻对齐窗口（s）；候选采样时刻与最新者相差超过此值即不成组
+    min_velocity_dt_s: 0.02      # R-005：速度差分最小 epoch 间隔（s）；低于此视为同刻/重发，保持上次速度
     confidence_tolerance_m: 0.25
     obs_topic: "/agc/air/obs"
     target_topic: "/agc/targets"
@@ -77,4 +86,9 @@ map_adapter:
     world_frame: "world"
     rate_hz: 2.0
     map_topic: "/agc/map"
+    dynamic_max_age_s: 1.5       # R-006：动态障碍轨最后观测年龄超过此值即过期（→ 未知，非永久自由）；static 先验不过期
+    source_max_age_s: 1.0        # R-006：/agc/obstacles 源静默超过此值 → /agc/map/valid=false（知识时效）
+    # R-040（ADR-0055）：场景/源版本（折入内容身份 hash / 由 launch 按场景派生注入）；单调更新序号诊断话题
+    scenario_version: ""
+    update_seq_topic: "/agc/map/update_seq"
     # map_file / obstacles_file / obstacles_source 由 launch 注入

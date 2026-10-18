@@ -1,0 +1,38 @@
+# AGC 场景几何单一真源（评审 S-06；ADR-0062）
+#
+# 本文件是**静态障碍实体几何 + 作业区几何**的**唯一真源**。物理世界 / 空中安全列表 /
+# 感知先验 / 感知地图 / `scenario_reset` 校验均由本文件**派生**（launch 生成或 composition
+# 注入）。节点不得覆写（契约 [参数入口] ../../docs/ROS2迁移交接文档.md#params）。
+#
+# 纪律：
+#   * 修改几何**只改本文件**；各域随之派生（`scripts/w6_geometry_check.py` 可复核）。
+#   * 本真源为**物理 / 真值**事实——**不等于**「所有算法都可读真值」；感知静态先验仍受
+#     ADR-0020 成文假设约束（见 agc_perception/config/obstacles.yaml 头部）。
+#   * `color` 仅保视觉保真，**非几何**。
+#
+# `work_area`（作业区 / 地图栅格几何）：
+#   * `resolution` —— m/cell；栅格覆盖 [origin, origin+size]²（容纳真八字足迹与柱）。
+# `obstacles`（静态障碍实体）：每实体 `id` / `x` / `y` / `z` / `yaw` / `size`（m，+ yaw rad）
+#   + `color`（[r,g,b]，视觉）。物理世界 `<pose>` 由 `x y z 0 0 yaw` 生成。
+work_area:
+  resolution: 0.5
+  size_x: 80.0
+  size_y: 80.0
+  origin_x: -40.0
+  origin_y: -40.0
+
+obstacles:
+  - id: pole_1
+    x: 0.0
+    y: -6.0
+    z: 1.5
+    yaw: 0.0
+    size: [0.3, 0.3, 3.0]
+    color: [1.0, 0.0, 0.0]
+  - id: pole_2
+    x: 6.0
+    y: 6.0
+    z: 1.5
+    yaw: 0.0
+    size: [0.3, 0.3, 3.0]
+    color: [0.0, 0.0, 1.0]

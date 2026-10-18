@@ -1,0 +1,45 @@
+# 感知通道变体：dropout（R-026 承载 `perception=dropout` 正例）
+#
+# 与 config/perception_sensors.yaml（nominal，drop_prob=0）对照：本文件**打开单拍丢包**
+# （drop_prob=0.3）并启用成簇丢失（drop_burst_*），使 air_perception 的通道观测按概率丢失，
+# 进而 air_fusion 的 /agc/targets 观测出现「按概率丢失」（R-026 dropout 轴正例）。
+# 其余（噪声 / FOV / 量程）保持标称，**只**变化 dropout 因子。
+# 诚实口径：真值派生感知仿真，非真实传感器标定（ADR-0020）。
+sensors:
+  - id: air_eo_front
+    sigma_xy_m: 0.10
+    sigma_z_m: 0.12
+    latency_s: 0.0
+    drop_prob: 0.3                    # 单拍独立丢包（正例 >0）
+    boresight_body: [1.0, 0.0, 0.0]
+    hfov_deg: 100.0
+    vfov_deg: 70.0
+    range_min_m: 0.30
+    range_max_m: 12.0
+    corr_xy: 0.0
+    noise_tau_s: 0.0
+    bias_m: [0.0, 0.0, 0.0]
+    drop_burst_prob: 0.4              # 两态成簇丢失：进入 burst 的概率
+    drop_burst_mean_s: 0.5            # burst 平均时长
+    drop_burst_mean_gap_s: 5.0        # 两 burst 间平均间隔
+  - id: air_ir_top
+    sigma_xy_m: 0.20
+    sigma_z_m: 0.25
+    latency_s: 0.0
+    drop_prob: 0.3
+    boresight_body: [1.0, 0.0, -0.10]
+    hfov_deg: 70.0
+    vfov_deg: 50.0
+    range_min_m: 0.30
+    range_max_m: 12.0
+    corr_xy: 0.0
+    noise_tau_s: 0.0
+    bias_m: [0.0, 0.0, 0.0]
+    drop_burst_prob: 0.4
+    drop_burst_mean_s: 0.5
+    drop_burst_mean_gap_s: 5.0
+
+perception_model:
+  occlusion:
+    enabled: false
+    pad_m: 0.0

@@ -1,0 +1,45 @@
+# W5 脚本级最小场景参数（R9）—— 由 w5_safety_scenario.launch.py 单一注入（契约 #params）
+#
+# 场景：车正对立柱 pole_1（world (0,-6)）前方 5 m、朝 -y 直行 → 由 RL 主控驱动，
+#       安全层（collision_monitor）应在安全/碰撞/紧急档依次降速 / 停车，车真实停住（C2 顺序 + C6）。
+# 复用 M0 的门控（/agc/task/start、/agc/task/state）与 /agc/scenario/reset；**不**自建 W6 业务场景。
+
+task_manager:
+  ros__parameters:
+    world_name: "agc_world"
+    goal_topic: "/agc/ground/goal"
+    goal_x: 0.0
+    goal_y: -9.0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"
+    # 运行模式（R-001）：W5 地面安全场景无空中链路 → 显式声明无空中域，相位复位门禁（C5）不适用
+    air_present: false
+    ground_controller_name: "agc_rl"
+
+scenario_reset:
+  ros__parameters:
+    world_name: "agc_world"
+    state_topic: "/agc/task/state"
+    car_start_topic: "/agc/scenario/car_start"
+    # 车置于 pole_1（0,-6）前方 5 m，朝 -y（yaw=-π/2）
+    car_x: 0.0
+    car_y: -1.0
+    car_z: 0.010
+    car_yaw: -1.5707963267948966
+    # 目标机远离作业点（C7 出生间距 ≥2.4m）
+    target_x: 20.0
+    target_y: 20.0
+    target_z: 2.0
+    target_yaw: 0.0
+
+run_logger:
+  ros__parameters:
+    experiments_root: "/home/chen/AGC/experiments"
+    git_root: "/home/chen/AGC"
+    campaign: "w5-ground-nav-safety"
+    scenario: "pole-approach"
+    seed: 0
+    odom_valid_topic: "/agc/ground/odom_valid"
+    cmd_topic: "/agc/ground/cmd_vel"
+    state_topic: "/agc/task/state"

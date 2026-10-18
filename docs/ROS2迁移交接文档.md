@@ -48,12 +48,12 @@
 ## 6. 硬约束（逐条复验）
 
 1. 8 字轨迹为**真八字**（Gerono，`rx=15` / `ry=9` / `h=2.5 m`），全程恒速、无加减速（线速度 `v=2.0 m/s`，弧长参数化）。
-2. 距离阈值顺序必须满足 紧急 < 碰撞 < 安全（默认 0.7m < 0.9m < 2.4m）。
-3. 实证/验收**使用非无头（GUI）**；默认仍无头以向后兼容。
+2. 距离阈值顺序必须满足 紧急 < 碰撞 < 安全。**顺序为不变量**；**绝对值为可标定量**，由地面安全层按 [ADR-0021](./adr/0021-ground-safety-thresholds-and-platform-recalibration.md) 的 Nav2 时间窗口径、以 W2 实测动力学标定为 `1.0 < 2.0 < 4.0 m`（ADR-0021(c) 已实测回填；旧值 `0.7/0.9/2.4 m` **作废**）。
+3. 实证 / 验收**定性、关键场景**使用**非无头（GUI）**并留记录；**规模数值统计**允许 **headless**，但**须经 GUI ↔ headless 等价核验**（同参数 / 同 seed、关键指标一致），且产物**如实标注** `backend` / `mode`；默认仍无头以向后兼容（[ADR-0057](./adr/0057-c3-gui-acceptance-scope-authorization.md)）。
 4. 训练与评估成功定义统一：**超时一律算失败**，只有显式完成才算成功。
 5. 每个 episode 起始必须把轨迹相位复位到 t=0。
 6. 安全滤波器参数须用**真实逃逸能力**（如 `lateral_speed = min(max_offset_xy, max_offset_change/dt)`）。
-7. 场景生成须保证**出生间距 ≥2.4m**；复位失败最多重试 3 次且不占 episode 预算。
+7. 场景生成须保证**出生净空 ≥ 可标定下限**（按新 C2 安全档 + 实体外伸推导，见 [ADR-0023](./adr/0023-spawn-clearance-recalibration.md)；旧值 `2.4 m` **作废**）；复位失败最多重试 3 次且不占 episode 预算。
 8. 状态机终态为"抵近并持续跟踪"，`SUCCESS` **不得**表述为"拦截完成"。
 9. 评估报告须含 `shield_infeasible_rate` 与 `reset_failure_rate`。
 10. **无人机对目标的跟踪常开**（非可选；原"跟随默认关闭"作废）：保持**安全间距**（不紧贴），目的为**不丢失目标**；跟踪要求目标新鲜（`ref_max_age_s=0.5`）且 `confidence≥0.5`，过期即冻结。无人机同时负责**自身飞行安全**（自避障）。
@@ -63,8 +63,10 @@
 <a id="terminal-semantics"></a>
 ## 7. 终态语义
 
-- 地面任务终态统一为 `TRACKING_SUCCESS`（"抵近并持续跟踪"）。
-- 拦截相关终态（如 `INTERCEPT_CONFIRMED`）的**启用条件与命名在 W6 定夺**（见 [ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md)）；**在其定案前**，任何文档/报告**不得**把 `SUCCESS` 表述为"拦截完成"。
+- 阶段划分：**阶段 A = 跟踪**；**阶段 B = 拦截**（本轮启用阶段 B）。
+- 地面任务**跟踪**终态统一为 `TRACKING_SUCCESS`（"抵近并持续跟踪"）；**不得**表述为"拦截完成"。
+- **拦截达成**终态为 **`INTERCEPT_CONFIRMED`**（阶段 B 启用，见 [ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md) 的 W6 修订），由 `reason_code` 区分方式：物理捕获 `CAPTURE_NET`（[ADR-0022](./adr/0022-launched-net-capture-mechanism.md)）/ 行为级干扰 `JAM_RTL|JAM_LAND|JAM_HOLD|JAM_LOST`；**不新增消息枚举**（[#messages](#messages) 字段 / 顺序不得变更）。
+- 失败 / 中止终态：`MISSION_FAILED`（超时 / 未达成）、`ABORTED`（外部中止）、`INFRA_FAILURE`（门禁失败）。
 
 <a id="lessons"></a>
 ## 8. 不可回退教训
@@ -91,12 +93,18 @@
 | 实验产物 | 唯一落点 `experiments/<campaign>/<run_id>/` | [ADR-0007](./adr/0007-experiment-artifacts-convention.md) |
 | 定位（重写即交付物） | 软著 / 平台；论文产出于纯仿真 | [ADR-0013](./adr/0013-rewrite-as-deliverable-sim-only.md) |
 | 研究主线 | 移动式主动拦截系统（D 主 / A 核）；RL·融合归后续 | [ADR-0014](./adr/0014-research-mainline-mobile-interception-system.md) |
-| 拦截范围 | 物理捕获判据 + 行为级电子干扰（EMI 不建模） | [ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md) |
+| 拦截范围 | 物理捕获（**发射式网**）+ 行为级电子干扰（EMI 不建模）；入侵者 **PX4 化** | [ADR-0015](./adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md)、[ADR-0022](./adr/0022-launched-net-capture-mechanism.md) |
 | 执行范围出口 | 到 W6；W7 / W8 归后续；拦截落 W2 / W6 | [ADR-0016](./adr/0016-execution-scope-exit-w6.md) |
 | 空地协同口径 | UAV 常开 standoff 跟踪 + 自保；地面自主规划 | [ADR-0017](./adr/0017-air-ground-collaboration-loop.md) |
 | 通用控制层 / 共享 LQR | `agc_control` 插件化（pluginlib），air / ground 共用 | [ADR-0018](./adr/0018-shared-control-layer-and-lqr-plugin.md) |
 | UAV 轨迹 / 跟踪参数 | 真八字 Gerono + 恒速 `v=2.0`；C1 修订 | [ADR-0019](./adr/0019-uav-trajectory-and-tracking-parameter-calibration.md) |
-| `task_manager` 架构 | **未决**，延后至 W6 spec | — |
+| 地面安全阈值 / 平台 | C2 厘清为"顺序不变量 + 可标定绝对值"；地面平台保形换装为差速 UGV（保 DiffDrive） | [ADR-0021](./adr/0021-ground-safety-thresholds-and-platform-recalibration.md) |
+| 物理捕获机制 | 改为**发射式网**；交战包络由网发射物理模型推导；裁决器可插拔 | [ADR-0022](./adr/0022-launched-net-capture-mechanism.md) |
+| 捕获裁决口径 | 现「入包络即命中」为 W6 **闭式占位**（仅产出终态 / 指标）；后续口径 = **火控窗口 + 瞄准提前量** | [ADR-0024](./adr/0024-capture-adjudication-fire-control-window.md) |
+| C7 出生净空 | 语义拆分；下限改为可标定量（新 C2 + 实体外伸推导），旧值 `2.4 m` 作废 | [ADR-0023](./adr/0023-spawn-clearance-recalibration.md) |
+| `task_manager` 架构 | **自研确定性 C++ 状态机**（吸收行为树模式，不引入 `bt_navigator`） | [W6 spec](../.trae/specs/w6-task-eval/spec.md) |
+| C3 验收范围 | 定性 / 关键场景须 GUI；规模数值统计允许 headless（须 GUI ↔ headless 等价核验 + backend/mode 标注） | [ADR-0057](./adr/0057-c3-gui-acceptance-scope-authorization.md) |
+| 捕获裁决器替换契约 | ADR-0024(c) 的「调用方不改」**范围澄清**：对外视图 / ABI 不变，内部允许 shot 生命周期与异步事件演进 | [ADR-0058](./adr/0058-capture-adjudicator-replacement-contract-and-event-semantics.md) |
 
 ---
 

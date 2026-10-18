@@ -3,31 +3,8 @@
 #
 # 注：ground_odom_adapter 自 W4 起由 agc_perception 的 perception_bringup 提供
 # （位姿来源改为真值旁路 /agc/gt/agc_car），其参数在 agc_perception/config/perception.yaml。
-
-ground_policy_placeholder:
-  ros__parameters:
-    base_frame: "car/base_link"
-    goal_topic: "/agc/ground/goal"
-    odom_topic: "/agc/ground/odom"
-    state_topic: "/agc/task/state"
-    cmd_raw_topic: "/agc/ground/cmd_vel_raw"
-    linear_speed: 0.3
-    yaw_gain: 1.5
-    max_yaw_rate: 1.0
-    goal_tolerance: 0.2
-
-ground_safety_stub:
-  ros__parameters:
-    in_topic: "/agc/ground/cmd_vel_raw"
-    out_topic: "/agc/ground/cmd_vel"
-    base_frame: "car/base_link"
-    watchdog_s: 0.3
-
-ground_drive_relay:
-  ros__parameters:
-    in_topic: "/agc/ground/cmd_vel"
-    out_topic: "/model/agc_car/cmd_vel"
-    watchdog_s: 0.3
+# 注：地面链路（安全层 collision_monitor / 中继 / 命令源）自 W5 起由 agc_ground 的
+# ground_bringup 提供，参数在 agc_ground/config/ground.yaml；本文件不再包含它们。
 
 task_manager:
   ros__parameters:
@@ -38,6 +15,10 @@ task_manager:
     odom_valid_topic: "/agc/ground/odom_valid"
     cmd_topic: "/agc/ground/cmd_vel"
     state_topic: "/agc/task/state"
+    # 运行模式（R-001）：M0 无空中链路 → 显式声明无空中域，相位复位门禁（C5）不适用
+    air_present: false
+    # 地面命令源名（W5：rl 主控 = agc_rl | 离线基线 = agc_ground）；随 command_source 切换
+    ground_controller_name: "agc_rl"
 
 scenario_reset:
   ros__parameters:

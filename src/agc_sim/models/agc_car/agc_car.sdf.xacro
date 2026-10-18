@@ -1,134 +1,170 @@
 <?xml version="1.0"?>
 <!--
-  agc_car —— 地面车模型（真实物理，ADR-0010；W2）
+  agc_car —— 地面平台模型（真实物理，ADR-0010；W5 保形换装，ADR-0021(d)）
 
-  基座来源：以 ROS 官方 `nav2_minimal_tb3_sim` 的 `urdf/gz_waffle.sdf.xacro`
-  （TurtleBot3 waffle，Apache-2.0）为**结构基座**——沿用其差速两驱动轮 + 2 后万向球
-  的布局、轮/关节位姿、接触与摩擦参数、DiffDrive 限幅；**不再从零手搓几何**。
+  基座来源：Gazebo Fuel 官方模型 **Clearpath Robotics Husky A200**（owner OpenRobotics）。
+  资产来源 / 许可 / 署名 / sha256 见清单 `docs/conventions/第三方资产与许可.md`；上游许可**待核实**
+  （候选 BSD，来源材料未取回 → 未决），**不**在此断言许可。
+  **保形换装**：只取该模型的**视觉 mesh + 碰撞 / 惯量参数**并按 1:1 尺度移植，**不**沿用其
+  插件（`libhusky_gazebo_plugins.so` 属 Gazebo Classic，弃用）；驱动内核仍为 gz-sim 原生
+  **DiffDrive**（ADR-0010 不改）。
 
-  相对基座的改动：
-    * 命名改为契约要求：模型 `agc_car`，机体系 `car/base_link`（禁止裸 base_link）；
-    * 车体质量取旧树行为事实 2.0（TB3 原为 1.0）；碰撞盒沿用车体尺寸（0.265×0.265×0.089）；
-    * 传感器：改用 3D 激光（Velodyne 语义，`gpu_lidar`）→ PointCloud2，挂 `car/lidar_link`
-      （TB3 原为 2D `LaserScan` + depth 相机，此处不采用）；
-    * visual 暂用基本几何（TB3 的 dae 网格为 `package://`，gz 不解析；网格细化延后）。
-    * 不设 DiffDrive 的 topic/frame 覆盖，沿用默认 `/model/agc_car/{cmd_vel,odometry}`
-      与 `_publisher` 默认帧（与 agc_sim 桥一致）。
+  相对 Fuel 基座的改动（保持本项目不变量）：
+    * 模型名 `agc_car`；机体系 `car/base_link`（禁止裸 base_link）；
+    * 4 轮布局（Husky 原为 4 轮滑移）：**后两轮**由 DiffDrive 驱动（`left/right_wheel_joint`），
+      **前两轮**为自由 revolute 从动轮（无驱动）；**移除** TB3 基座的后万向球；
+    * 3D 激光（Velodyne 语义，`gpu_lidar`）挂 `car/lidar_link`（话题 `/agc/car_lidar` 不变）；
+    * 拦截载荷（2 m 捕获网面 + 干扰载荷）沿用，位姿按 Husky 尺度上移；
+    * 不设 DiffDrive 的 topic/frame 覆盖，沿用默认 `/model/agc_car/{cmd_vel,odometry}`（与桥一致）。
+
+  Husky A200 关键参数（Fuel 官方）：底盘碰撞盒 1.0074×0.5709×0.2675 m、mass 33.855 kg；
+  轮半径 0.17775 m、轮宽 0.1143 m、轮质量 2.6357 kg；轮位 x=±0.256、y=±0.285475、z=0.035；
+  wheel_separation = 2×0.285475 = 0.57095 m。
 -->
 <sdf version="1.8" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:arg name="wheel_separation" default="0.287"/>
-  <xacro:arg name="wheel_radius" default="0.033"/>
-  <xacro:arg name="wheel_width" default="0.018"/>
-  <xacro:arg name="max_wheel_torque" default="20.0"/>
-  <xacro:arg name="max_wheel_acceleration" default="1.0"/>
-  <xacro:arg name="body_length" default="0.265"/>
-  <xacro:arg name="body_width" default="0.265"/>
-  <xacro:arg name="body_height" default="0.089"/>
-  <xacro:arg name="body_mass" default="2.0"/>
+  <xacro:arg name="wheel_separation" default="0.57095"/>
+  <xacro:arg name="wheel_radius" default="0.17775"/>
+  <xacro:arg name="wheel_width" default="0.1143"/>
+  <xacro:arg name="max_wheel_torque" default="100.0"/>
+  <xacro:arg name="max_wheel_acceleration" default="5.0"/>
+  <xacro:arg name="max_linear_velocity" default="1.5"/>
+  <xacro:arg name="max_angular_velocity" default="2.0"/>
+  <!-- 末端失效停车守门人（R-009，ADR-0025）：意图失效超时（s）。
+       值源自 config/car.yaml model.cmd_deadman_timeout_s，经 world_bringup 单一注入（契约 #params）。 -->
+  <xacro:arg name="cmd_deadman_timeout_s" default="0.3"/>
+  <xacro:arg name="body_length" default="1.0074"/>
+  <xacro:arg name="body_width" default="0.5709"/>
+  <xacro:arg name="body_height" default="0.2675"/>
+  <xacro:arg name="body_mass" default="33.855"/>
   <!-- 拦截载荷（W2-interception，R10）：轻量附件、无碰撞；参数落 config -->
   <xacro:arg name="capture_net_radius" default="1.0"/>
   <xacro:arg name="payload_mass" default="0.05"/>
 
+  <!-- 车轮共用的接触/摩擦面（4 轮滑移底盘）：
+       fdir1 = 车体行进方向（碰撞系 x），纵向 μ=1.0 抓地、横向 μ2=0.2 允许擦地滑移，
+       使后驱差速能真正转向（否则前从动轮横向锁死，车几乎转不动）。 -->
+  <xacro:macro name="wheel_surface">
+    <surface>
+      <friction>
+        <ode><mu>1.0</mu><mu2>0.2</mu2><slip1>0.0</slip1><slip2>0.0</slip2><fdir1>1 0 0</fdir1></ode>
+      </friction>
+      <contact>
+        <ode><soft_cfm>0</soft_cfm><soft_erp>0.2</soft_erp><kp>1e+5</kp><kd>1</kd>
+          <max_vel>0.01</max_vel><min_depth>0.001</min_depth></ode>
+      </contact>
+    </surface>
+  </xacro:macro>
+
+  <!-- 单个车轮 link（Husky 轮：mesh + 圆柱碰撞 + Fuel 惯量）。
+       注意：SDF 中换能关节的关节系默认与**子 link 系重合**，故位姿必须写在 link 上
+       （写 joint pose 会被忽略 → 轮子落到模型原点，本项目旧 TB3 基座即因此踩坑）。 -->
+  <xacro:macro name="wheel_link" params="name pose">
+    <link name="car/${name}">
+      <pose>${pose}</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <inertia>
+          <ixx>0.0246688</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0246688</iyy><iyz>0</iyz>
+          <izz>0.0441058</izz>
+        </inertia>
+        <mass>2.6357</mass>
+      </inertial>
+      <collision name="${name}_collision">
+        <pose>0 0 0 -1.5707 0 0</pose>
+        <geometry>
+          <cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder>
+        </geometry>
+        <xacro:wheel_surface/>
+      </collision>
+      <visual name="${name}_visual">
+        <pose>0 0 0 -3.14159 0 0</pose>
+        <geometry>
+          <mesh><uri>model://agc_car/meshes/wheel.stl</uri></mesh>
+        </geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+    </link>
+  </xacro:macro>
+
   <model name="agc_car">
     <static>false</static>
 
-    <!-- 车体（基座：TB3 车身 link；原点约在轮轴高度） -->
+    <!-- 车体（Husky 底盘：mesh 外观 + Fuel 惯量；原点为 Husky base_link 约定） -->
     <link name="car/base_link">
       <inertial>
-        <pose>0 0 0.048 0 0 0</pose>
+        <pose>-0.0856132 -0.000839955 0.238145 0 0 0</pose>
         <inertia>
-          <ixx>0.001</ixx><ixy>0.0</ixy><ixz>0.0</ixz>
-          <iyy>0.001</iyy><iyz>0.0</iyz><izz>0.001</izz>
+          <ixx>2.2343</ixx><ixy>-0.023642</ixy><ixz>0.275174</ixz>
+          <iyy>3.42518</iyy><iyz>0.00239624</iyz>
+          <izz>2.1241</izz>
         </inertia>
         <mass>$(arg body_mass)</mass>
       </inertial>
       <collision name="base_collision">
-        <pose>0 0 0.048 0 0 0</pose>
+        <pose>0 0 0.1 0 0 0</pose>
         <geometry>
           <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
         </geometry>
       </collision>
+      <!-- 外观：Fuel 官方 Husky mesh（底盘 + 顶板 + 前后保险杠 + 顶架） -->
       <visual name="base_visual">
-        <pose>0 0 0.048 0 0 0</pose>
-        <geometry>
-          <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
-        </geometry>
-        <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.4 0.4 0.4 1</diffuse></material>
+        <geometry><mesh><uri>model://agc_car/meshes/base_link.stl</uri></mesh></geometry>
+        <material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.16 0.16 0.16 1</diffuse></material>
       </visual>
-    </link>
-
-    <!-- 左驱动轮（基座：wheel_left_link；位姿由 joint pose 给定，link 不重复给 pose） -->
-    <link name="car/left_wheel">
-      <inertial>
-        <pose>0 0 0 0 0 0</pose>
-        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz></inertia>
-        <mass>0.1</mass>
-      </inertial>
-      <collision name="wheel_left_collision">
-        <pose>0 0 0 1.5708 0 0</pose>
-        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
-        <surface>
-          <friction><ode><mu>1</mu><mu2>1</mu2><slip1>0.035</slip1><slip2>0</slip2><fdir1>0 0 1</fdir1></ode></friction>
-          <contact><ode><soft_cfm>0</soft_cfm><soft_erp>0.2</soft_erp><kp>1e+5</kp><kd>1</kd><max_vel>0.01</max_vel><min_depth>0.001</min_depth></ode></contact>
-        </surface>
-      </collision>
-      <visual name="wheel_left_visual">
-        <pose>0 0 0 1.5708 0 0</pose>
-        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
-        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      <visual name="top_plate_visual">
+        <geometry><mesh><uri>model://agc_car/meshes/top_plate.stl</uri></mesh></geometry>
+        <material><ambient>0.85 0.7 0.1 1</ambient><diffuse>0.9 0.75 0.15 1</diffuse></material>
       </visual>
-    </link>
-
-    <!-- 右驱动轮 -->
-    <link name="car/right_wheel">
-      <inertial>
-        <pose>0 0 0 0 0 0</pose>
-        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz></inertia>
-        <mass>0.1</mass>
-      </inertial>
-      <collision name="wheel_right_collision">
-        <pose>0 0 0 1.5708 0 0</pose>
-        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
-        <surface>
-          <friction><ode><mu>1</mu><mu2>1</mu2><slip1>0.035</slip1><slip2>0</slip2><fdir1>0 0 1</fdir1></ode></friction>
-          <contact><ode><soft_cfm>0</soft_cfm><soft_erp>0.2</soft_erp><kp>1e+5</kp><kd>1</kd><max_vel>0.01</max_vel><min_depth>0.001</min_depth></ode></contact>
-        </surface>
-      </collision>
-      <visual name="wheel_right_visual">
-        <pose>0 0 0 1.5708 0 0</pose>
-        <geometry><cylinder><radius>$(arg wheel_radius)</radius><length>$(arg wheel_width)</length></cylinder></geometry>
-        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      <visual name="front_bumper_visual">
+        <pose>0.47 0 0.091 0 0 0</pose>
+        <geometry><mesh><uri>model://agc_car/meshes/bumper.stl</uri></mesh></geometry>
+        <material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.16 0.16 0.16 1</diffuse></material>
       </visual>
+      <visual name="rear_bumper_visual">
+        <pose>-0.47 0 0.091 0 0 3.141</pose>
+        <geometry><mesh><uri>model://agc_car/meshes/bumper.stl</uri></mesh></geometry>
+        <material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.16 0.16 0.16 1</diffuse></material>
+      </visual>
+      <visual name="user_rail_visual">
+        <pose>0.272 0 0.245 0 0 0</pose>
+        <geometry><mesh><uri>model://agc_car/meshes/user_rail.stl</uri></mesh></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.25 0.25 0.25 1</diffuse></material>
+      </visual>
+      <!-- R-027（ADR-0042）：GZ contact 传感器——「真实碰撞」的**真值来源**。
+           挂 car/base_link，监测**同 link 内** base_collision 与其它碰撞体的接触；
+           检测到接触时由世界已加载的 gz-sim-contact-system（agc_world.sdf 的
+           <plugin filename="gz-sim-contact-system">）发布 gz.msgs.Contacts，经 bridge.yaml
+           桥为 /agc/ground/contact（ros_gz_interfaces/Contacts），仅供 run_logger 记为
+           **真实接触事件**。**不改**任何物理 / 惯性 / 驱动插件（不新增第二 ROS 命令者）。 -->
+      <sensor name="contact" type="contact">
+        <contact><collision>base_collision</collision></contact>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <topic>/agc/car_contact</topic>
+      </sensor>
     </link>
 
-    <!-- 后万向球（被动支撑；基座：caster_back_*） -->
-    <link name="car/caster_back_left">
-      <pose>0.177 0.064 -0.004 0 0 0</pose>
-      <inertial>
-        <mass>0.001</mass>
-        <inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia>
-      </inertial>
-      <collision name="collision">
-        <geometry><sphere><radius>0.005</radius></sphere></geometry>
-        <surface><contact><ode><soft_cfm>0</soft_cfm><soft_erp>0.2</soft_erp><kp>1e+5</kp><kd>1</kd><max_vel>0.01</max_vel><min_depth>0.001</min_depth></ode></contact></surface>
-      </collision>
-    </link>
-    <link name="car/caster_back_right">
-      <pose>0.177 -0.064 -0.004 0 0 0</pose>
-      <inertial>
-        <mass>0.001</mass>
-        <inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia>
-      </inertial>
-      <collision name="collision">
-        <geometry><sphere><radius>0.005</radius></sphere></geometry>
-        <surface><contact><ode><soft_cfm>0</soft_cfm><soft_erp>0.2</soft_erp><kp>1e+5</kp><kd>1</kd><max_vel>0.01</max_vel><min_depth>0.001</min_depth></ode></contact></surface>
-      </collision>
-    </link>
+    <!-- 4 轮（Husky 布局）：后两轮驱动、前两轮从动。位姿写在 link 上（见 wheel_link 注释） -->
+    <xacro:wheel_link name="left_wheel" pose="-0.256 0.285475 0.035 0 0 0"/>
+    <xacro:wheel_link name="right_wheel" pose="-0.256 -0.285475 0.035 0 0 0"/>
+    <xacro:wheel_link name="front_left_wheel" pose="0.256 0.285475 0.035 0 0 0"/>
+    <xacro:wheel_link name="front_right_wheel" pose="0.256 -0.285475 0.035 0 0 0"/>
 
-    <!-- 3D 激光（W2-full 传感器链路；供 W4 costmap / W5 collision_monitor） -->
+    <!-- 3D 激光（W2-full 传感器链路；供 W4 costmap / W5 collision_monitor）
+         —— R-037 传感器高度与障碍族限制**如实登记**（ADR-0052(a)）——
+         安装高度：`car/lidar_link` **z = 0.48 m**（车顶水平面）。模型为 `gpu_lidar` 3D
+         （H 360 束/360°、V 16 束 ±0.261799 rad ≈ ±15°、range [0.2,20]、10 Hz），但**安全层 / costmap
+         消费的 `/agc/ground/scan_filtered` 等价于 z≈0.48 的 2D 水平面**扫描
+         （见 agc_ground/config/ground.yaml 的单水平面口径）→ **安全层可见性 = 单一 z=0.48 平面**。
+         障碍族可见性边界（**如实**）：① 低障碍（顶面低于扫描面 / 不入水平光束）→ 不可见；
+         ② 悬空结构（z=0.48 之上、非扫掠高度）→ 不可见；③ 薄障碍（细柱/薄板）→ 受束间距限制
+         （距离 D 处相邻束间距 ≈ 0.01745·D m）；④ 自体遮挡 / 自滤后仅未被车体遮挡方向可见。
+         **收窄声明**：把「立柱 world 达标」限定为「在 z≈0.48 处有足够水平截面且进入光束」的障碍族，
+         **不得外推**为任意障碍（含低/悬空/薄障碍）的通用保证。**不改**本 link 的任何物理/惯性/传感器参数。 -->
     <link name="car/lidar_link">
-      <pose>0 0 0.12 0 0 0</pose>
+      <pose>0 0 0.48 0 0 0</pose>
       <inertial>
         <mass>0.1</mass>
         <inertia><ixx>1e-4</ixx><iyy>1e-4</iyy><izz>1e-4</izz></inertia>
@@ -149,9 +185,18 @@
     </link>
 
     <!-- 拦截载荷（W2-interception，R10）：轻量附件、**无碰撞**、不改动 DiffDrive 标定 -->
+    <!-- —— R-037 载荷外伸 / 碰撞口径一致化（ADR-0052(b)）——
+         **显式声明各自适用域**，消除「一侧计入另侧不计」的隐含不一致：
+         * 净空（布局约束，ADR-0023）：载荷外伸 1.0 m 仅作**出生净空推导**的外伸登记，约束场景随机化；
+         * 安全层（2D 视野）：载荷位于 z=1.60（网面）/ z=0.30（发射器），**不**在 z=0.48 扫描面 → 不进视野；
+         * 物理碰撞：载荷**无 collision**（当前不参与真实接触）→ 网/干扰**行为级以外**的物理接触验证 **unsupported**；
+         * 重标定义务：载荷**物理启用（加 collision）后**，C2/C6 与本外伸/碰撞口径**必须重新标定**，不借旧标定维持。
+         **不改**载荷的任何物理/惯性/几何参数。 -->
     <!-- 捕获网面：直径 2 m 的圆面，法线朝前（+x），供 W6 物理捕获"穿越判据"使用 -->
     <link name="car/capture_net">
-      <pose>0.45 0 0.10 0 0 0</pose>
+      <!-- W5：抬高至传感器扫描平面上方（网面底 0.60 > 雷达 0.48），否则 2 m 网面遮挡激光前向视野
+           （gpu_lidar 对 visual 求交，实测网面在正前方 0.50 m 处恒返回）；同时更贴合目标机 ~2 m 高度。 -->
+      <pose>0.55 0 1.60 0 0 0</pose>
       <inertial>
         <mass>$(arg payload_mass)</mass>
         <inertia><ixx>1e-4</ixx><iyy>1e-4</iyy><izz>1e-4</izz></inertia>
@@ -165,7 +210,7 @@
 
     <!-- 干扰载荷：行为级电子干扰发射器（EMI 不建模）；行为接口属 W6 -->
     <link name="car/jammer">
-      <pose>-0.10 0 0.16 0 0 0</pose>
+      <pose>-0.20 0 0.30 0 0 0</pose>
       <inertial>
         <mass>$(arg payload_mass)</mass>
         <inertia><ixx>1e-4</ixx><iyy>1e-4</iyy><izz>1e-4</izz></inertia>
@@ -176,26 +221,27 @@
       </visual>
     </link>
 
-    <!-- 关节（基座布局；轮用 revolute，顺时针/逆时针由 DiffDrive 驱动） -->
+    <!-- 关节：后两轮驱动（DiffDrive），前两轮自由从动。关节系与子 link 系重合（不写 joint pose）。
+         轮位（Husky 布局）：x=±0.256，y=±wheel_separation/2=±0.285475，z=0.035 -->
     <joint name="left_wheel_joint" type="revolute">
-      <pose>0 0.144 0.023 0 0 0</pose>
       <parent>car/base_link</parent>
       <child>car/left_wheel</child>
       <axis><xyz>0 1 0</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
     <joint name="right_wheel_joint" type="revolute">
-      <pose>0 -0.144 0.023 0 0 0</pose>
       <parent>car/base_link</parent>
       <child>car/right_wheel</child>
       <axis><xyz>0 1 0</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
-    <joint name="caster_back_left_joint" type="ball">
+    <joint name="front_left_wheel_joint" type="revolute">
       <parent>car/base_link</parent>
-      <child>car/caster_back_left</child>
+      <child>car/front_left_wheel</child>
+      <axis><xyz>0 1 0</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
-    <joint name="caster_back_right_joint" type="ball">
+    <joint name="front_right_wheel_joint" type="revolute">
       <parent>car/base_link</parent>
-      <child>car/caster_back_right</child>
+      <child>car/front_right_wheel</child>
+      <axis><xyz>0 1 0</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
     <joint name="lidar_joint" type="fixed">
       <parent>car/base_link</parent>
@@ -210,7 +256,7 @@
       <child>car/jammer</child>
     </joint>
 
-    <!-- 差速驱动（真实物理；限幅沿用 TB3 基座量级） -->
+    <!-- 差速驱动（真实物理；后两轮驱动，Husky 尺度参数，ADR-0010 / ADR-0021） -->
     <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
       <left_joint>left_wheel_joint</left_joint>
       <right_joint>right_wheel_joint</right_joint>
@@ -218,11 +264,21 @@
       <wheel_radius>$(arg wheel_radius)</wheel_radius>
       <max_wheel_torque>$(arg max_wheel_torque)</max_wheel_torque>
       <max_wheel_acceleration>$(arg max_wheel_acceleration)</max_wheel_acceleration>
-      <max_linear_velocity>0.5</max_linear_velocity>
-      <min_linear_velocity>-0.5</min_linear_velocity>
-      <max_angular_velocity>2.0</max_angular_velocity>
-      <min_angular_velocity>-2.0</min_angular_velocity>
+      <max_linear_velocity>$(arg max_linear_velocity)</max_linear_velocity>
+      <min_linear_velocity>-$(arg max_linear_velocity)</min_linear_velocity>
+      <max_angular_velocity>$(arg max_angular_velocity)</max_angular_velocity>
+      <min_angular_velocity>-$(arg max_angular_velocity)</min_angular_velocity>
       <odom_publish_frequency>30</odom_publish_frequency>
+    </plugin>
+
+    <!-- 末端失效停车守门人（R-009，ADR-0025）：GZ 侧唯一写 DiffDrive 命令口者。
+         「意图」走 gz 话题 /agc/sim/cmd_intent（bridge.yaml 把 ROS /model/agc_car/cmd_vel 桥到此
+         gz 话题；ROS 侧话题名不变）；本插件 fresh→转发、stale→发零速到 DiffDrive 默认订阅的
+         gz 话题 /model/agc_car/cmd_vel。插件只转发或归零，不自创运动、不发 ROS 话题（非第二命令者）。 -->
+    <plugin filename="libagc_cmd_deadman.so" name="agc_sim::CmdDeadman">
+      <in_topic>/agc/sim/cmd_intent</in_topic>
+      <out_topic>/model/agc_car/cmd_vel</out_topic>
+      <timeout>$(arg cmd_deadman_timeout_s)</timeout>
     </plugin>
 
   </model>

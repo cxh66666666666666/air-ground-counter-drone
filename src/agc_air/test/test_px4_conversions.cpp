@@ -70,3 +70,63 @@ TEST(Px4Conversions, TimeMapperConvergesToOffset)
   EXPECT_NEAR(mapper.offsetUs(), 1'000'000.0, 1.0);
   EXPECT_EQ(mapper.toRosMicros(6'000'000), 7'000'000);
 }
+
+TEST(Px4Conversions, TimeMapperRosStampIsNanoseconds)
+{
+  // R-002 回归：适配层把映射结果交给 rclcpp::Time(单整数)，该构造器按**纳秒**解释。
+  // 仅断言 toRosMicros（µs）不足以发现"数值对、单位错"——这里断言送进 Time 的数值是 ns：
+  // 7 s 必须是 7e9；误用 µs 会得到 7e6（= 0.007 s，Header 缩小 1000 倍）。
+  Px4TimeMapper mapper(0.5);
+  mapper.observe(6'000'000, 7'000'000);   // PX4 6 s ↔ ROS 7 s（µs 对）
+  ASSERT_TRUE(mapper.valid());
+  EXPECT_EQ(mapper.toRosNanoseconds(6'000'000), 7'000'000'000LL);
+  EXPECT_DOUBLE_EQ(
+    static_cast<double>(mapper.toRosNanoseconds(6'000'000)) * 1e-9, 7.0);
+}
+
+TEST(Px4Conversions, LocalNedToWorldEnuAppliesOrigin)
+{
+  // R-003：非零出生点。局部 NED (2,3,-1) → ENU (3,2,1)，再叠加原点 (10,-5,0.2)
+  const Vector3 world = agc_air::localNedToWorldEnu(Vector3(2.0, 3.0, -1.0),
+    Vector3(10.0, -5.0, 0.2));
+  EXPECT_DOUBLE_EQ(world.x(), 13.0);
+  EXPECT_DOUBLE_EQ(world.y(), -3.0);
+  EXPECT_DOUBLE_EQ(world.z(), 1.2);
+  // 零原点退化为纯轴变换（与旧行为一致）
+  const Vector3 flat = agc_air::localNedToWorldEnu(Vector3(2.0, 3.0, -1.0), Vector3::Zero());
+  EXPECT_DOUBLE_EQ(flat.x(), 3.0);
+  EXPECT_DOUBLE_EQ(flat.y(), 2.0);
+  EXPECT_DOUBLE_EQ(flat.z(), 1.0);
+}
+
+TEST(Px4Conversions, VelocityFrameConversionAtNinetyDegreeHeading)
+{
+  // 90° 航向：NED 偏航 0（朝北）的单位四元数 → ENU 下机头即 +y（北）。
+  const auto q = agc_air::px4AttitudeToEnu({0.0f, 0.0f, 0.0f, 1.0f});
+  // 世界 ENU 向北 1 m/s → 机体系前向 x = 1（R-003：twist 在 child frame）
+  const Vector3 north_body = agc_air::enuToBodyFlu(q, Vector3(0.0, 1.0, 0.0));
+  EXPECT_NEAR(north_body.x(), 1.0, 1e-9);
+  EXPECT_NEAR(north_body.y(), 0.0, 1e-9);
+  EXPECT_NEAR(north_body.z(), 0.0, 1e-9);
+  // 世界 ENU 向东 1 m/s → 机体系右向（-y）
+  const Vector3 east_body = agc_air::enuToBodyFlu(q, Vector3(1.0, 0.0, 0.0));
+  EXPECT_NEAR(east_body.x(), 0.0, 1e-9);
+  EXPECT_NEAR(east_body.y(), -1.0, 1e-9);
+  // 往返还原（消费端 bodyFluToEnu）
+  const Vector3 back = agc_air::bodyFluToEnu(q, north_body);
+  EXPECT_NEAR(back.x(), 0.0, 1e-9);
+  EXPECT_NEAR(back.y(), 1.0, 1e-9);
+}
+
+TEST(Px4Conversions, ParseSpawnPositionXyz)
+{
+  Vector3 p;
+  ASSERT_TRUE(agc_air::parseSpawnPositionXyz("10,-5,0.2,0,0,1.57", p));
+  EXPECT_DOUBLE_EQ(p.x(), 10.0);
+  EXPECT_DOUBLE_EQ(p.y(), -5.0);
+  EXPECT_DOUBLE_EQ(p.z(), 0.2);
+  ASSERT_TRUE(agc_air::parseSpawnPositionXyz("1,2,3", p));   // 仅位置三位亦接受
+  EXPECT_DOUBLE_EQ(p.z(), 3.0);
+  EXPECT_FALSE(agc_air::parseSpawnPositionXyz("1,2", p));    // 位数不足
+  EXPECT_FALSE(agc_air::parseSpawnPositionXyz("a,b,c", p));  // 非数值
+}

@@ -11,6 +11,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <sstream>
+#include <string>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -74,6 +76,46 @@ inline double yawFromQuaternion(const Quaternion & q)
   return std::atan2(R(1, 0), R(0, 0));
 }
 
+/// 局部 NED 位置 → 世界 ENU（R-003）：world = origin_enu + R_enu←ned · p_ned。
+/// PX4 EKF2 的 `VehicleOdometry.position` 是**相对 EKF 全局原点**的局部位置（源码确认），
+/// 不是 gz 世界坐标；origin_enu 即该原点在世界 ENU 中的位置（SITL 下为 spawn 位）。
+inline Vector3 localNedToWorldEnu(const Vector3 & pos_ned, const Vector3 & origin_enu)
+{
+  return origin_enu + nedToEnu(pos_ned);
+}
+
+/// 世界 ENU 速度 → 机体系 FLU：v_flu = R(q_enu)ᵀ · v_enu（q_enu 为 FLU→ENU 姿态）。
+inline Vector3 enuToBodyFlu(const Quaternion & q_enu, const Vector3 & v_enu)
+{
+  return q_enu.normalized().conjugate() * v_enu;
+}
+
+/// 机体系 FLU 速度 → 世界 ENU：v_enu = R(q_enu) · v_flu。
+/// `/agc/air/odom` 的 twist 依 nav_msgs 约定在 child frame（机体系），消费端据此还原世界速度。
+inline Vector3 bodyFluToEnu(const Quaternion & q_enu, const Vector3 & v_flu)
+{
+  return q_enu.normalized() * v_flu;
+}
+
+/// 解析 spawn 位姿串（`"x,y,z[,roll,pitch,yaw]"`）的**前三个**数值 → 世界 ENU 位置。
+/// 用作 `px4_adapter` 的局部原点：PX4 EKF 原点取**首次定位时刻的机体位置**，SITL 下即 spawn 位。
+inline bool parseSpawnPositionXyz(const std::string & s, Vector3 & out)
+{
+  std::istringstream iss(s);
+  std::string tok;
+  double v[3] = {0.0, 0.0, 0.0};
+  for (double & i : v) {
+    if (!std::getline(iss, tok, ',')) {return false;}
+    try {
+      i = std::stod(tok);
+    } catch (const std::exception &) {
+      return false;
+    }
+  }
+  out = Vector3(v[0], v[1], v[2]);
+  return true;
+}
+
 /// PX4 时间戳（自 boot 的 µs）→ ROS 时间（sim 时钟）的仿射映射。
 ///
 /// PX4 内部时间与 gz `/clock`（sim 时间）不同源；用指数滑动平均估计二者的常数偏移，
@@ -104,6 +146,14 @@ public:
   {
     if (!valid_) {return 0;}
     return static_cast<std::int64_t>(static_cast<double>(px4_us) + offset_us_);
+  }
+
+  /// PX4 µs → ROS **纳秒**（未观测到时返回 0）。
+  /// 构造 `rclcpp::Time` 必须走这里：单整数构造器按**纳秒**解释，误传 µs 会让 Header
+  /// 时间戳缩小 1000 倍（R-002）。两个单位接口成对存在，避免"数值对但单位错"。
+  std::int64_t toRosNanoseconds(std::uint64_t px4_us) const
+  {
+    return toRosMicros(px4_us) * 1000;
   }
 
 private:

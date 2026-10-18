@@ -1,62 +1,64 @@
 <?xml version="1.0"?>
 <!--
-  intruder_uav —— 可控目标（W2-interception）
+  intruder_uav —— 入侵目标模型（双模，由 xacro 参数 `controlled` 切换）
 
-  实现说明（全新重写）：
-    * link 级 <gravity>false</gravity>：**失重**（SDF 的 gravity 属 link 而非 model）。
-    * **可控化**（R9）：挂 GZ `VelocityControl`，外部经话题 `/model/intruder_uav/cmd_vel`
-      发 Twist 速度指令即可脚本化驱动（半运动学，位置 = 速度积分）。**driver / 干扰注入
-      节点属 W6**（[ADR-0016](../../../docs/adr/0016-execution-scope-exit-w6.md)）；
-      本模型只提供"被控制的能力"。
-    * 位姿亦可用 set_pose 服务直接置位（复位属 M0）。
-    * 参数经 xacro 注入（默认值来自 agc_sim/config/target.yaml）。
-    * 碰撞盒口径沿用旧树（0.32×0.32×0.10、mass 1.0）作为行为事实；visual 用基本几何+
-      红色（辨识色），网格细化属 W2-full，不复制旧资产。
+  模式（W6 前置 P 引入，见 [ADR-0015](../../../docs/adr/0015-interception-scope-physical-capture-and-behavioral-jamming.md) 修订）：
+    * controlled=false（默认）：**被动/失重**刚体（box + GZ VelocityControl），供 M0/W5 兼容使用。
+    * controlled=true：**PX4 可控**机型 —— 以 PX4 官方 `x500` 机型 merge 到本模型（模型名保留
+      `intruder_uav`），由**第二个 PX4 SITL 实例**经 `PX4_GZ_MODEL_NAME=intruder_uav` attach 控制
+      （GZ 话题 `/intruder_uav/command/motor_speed` 等由 PX4 相对模型名寻址）。
+  参数经 xacro 注入（默认值来自 agc_sim/config/target.yaml）。
+  [只读旧树边界] 本模型从零撰写，mesh/外观取 PX4 官方资源，不从归档旧树复制。
 -->
 <sdf version="1.8" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+  <xacro:arg name="controlled" default="false"/>
   <xacro:arg name="body_length" default="0.32"/>
   <xacro:arg name="body_width" default="0.32"/>
   <xacro:arg name="body_height" default="0.10"/>
   <xacro:arg name="body_mass" default="1.0"/>
 
   <model name="intruder_uav">
-    <static>false</static>
+    <xacro:unless value="$(arg controlled)">
+      <!-- ===== 被动版（M0/W5 兼容）：失重刚体 + 外部速度指令驱动 ===== -->
+      <static>false</static>
 
-    <link name="target/base_link">
-      <gravity>false</gravity>
-      <inertial>
-        <mass>$(arg body_mass)</mass>
-        <inertia>
-          <ixx>0.010</ixx>
-          <iyy>0.010</iyy>
-          <izz>0.020</izz>
-        </inertia>
-      </inertial>
-      <collision name="body_collision">
-        <geometry>
-          <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
-        </geometry>
-      </collision>
-      <visual name="body_visual">
-        <geometry>
-          <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
-        </geometry>
-        <material>
-          <ambient>1 0 0 1</ambient>
-          <diffuse>1 0 0 1</diffuse>
-        </material>
-      </visual>
-    </link>
+      <link name="target/base_link">
+        <gravity>false</gravity>
+        <inertial>
+          <mass>$(arg body_mass)</mass>
+          <inertia>
+            <ixx>0.010</ixx>
+            <iyy>0.010</iyy>
+            <izz>0.020</izz>
+          </inertia>
+        </inertial>
+        <collision name="body_collision">
+          <geometry>
+            <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
+          </geometry>
+        </collision>
+        <visual name="body_visual">
+          <geometry>
+            <box><size>$(arg body_length) $(arg body_width) $(arg body_height)</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
 
-    <!-- 可控化（R9）：外部速度指令驱动；driver / 干扰注入节点属 W6（ADR-0016） -->
-    <plugin filename="gz-sim-velocity-control-system" name="gz::sim::systems::VelocityControl">
-      <topic>/model/intruder_uav/cmd_vel</topic>
-    </plugin>
+      <plugin filename="gz-sim-velocity-control-system" name="gz::sim::systems::VelocityControl">
+        <topic>/model/intruder_uav/cmd_vel</topic>
+      </plugin>
+    </xacro:unless>
 
-    <!-- 注：W3 占位的真值 PosePublisher 插件已在 W4 退役。
-         真值旁路改由 agc_perception 的 `gt_bypass` 经 gz-transport 直读
-         `/world/agc_world/dynamic_pose/info` 统一提供（spec R1），不再逐实体桥接。 -->
-
+    <xacro:if value="$(arg controlled)">
+      <!-- ===== 可控版（W6 前置 P）：PX4 x500 机型（merge），由第二 PX4 实例 attach ===== -->
+      <include merge="true">
+        <uri>model://x500</uri>
+      </include>
+    </xacro:if>
   </model>
 </sdf>

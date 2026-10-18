@@ -8,9 +8,17 @@
 //
 // 关键口径（对齐旧树行为）：
 // 1. 每通道独立 RNG 噪声 + 独立延迟/丢包/偏置；不共享随机流。
-// 2. 观测 header.stamp = **原始观测时刻**；延迟只推迟「发布」，消费者看到的观测年龄随之增长。
-// 3. confidence 由噪声模型解析给出（Rayleigh 径向覆盖，见 confidence.hpp）。
-// 4. 本节点**不写文件**（spec R10；run 级日志归 W6 agc_run_logger）。
+// 2. **三个时刻**（spec R-004）：
+//      * 源采样时刻 = 入站消息 Header.stamp（目标真值 / 无人机 odom）；
+//      * 通道采样时刻 = tick（本通道加噪定格的时刻）；
+//      * 交付（发布）时刻 = latency_s 释放后的发布时刻。
+//    TargetObservation.header.stamp 承载**源采样时刻**；延迟只推迟交付、不改源采样时刻。
+// 3. **源寿命（spec R-004）**：目标真值与无人机 odom 分别按入站 Header.stamp 记源采样时刻；
+//    年龄（仿真 now() − 源采样时刻）> source_timeout_s 即视为该源失效——目标通道本拍
+//    SHALL NOT 用缓存位置重打「当前」时间戳（不发 TargetObservation）；odom 失效时
+//    gatePoint 不再以陈旧位姿放行（目标/障碍观测都不产生）。
+// 4. confidence 由噪声模型解析给出（Rayleigh 径向覆盖，见 confidence.hpp）。
+// 5. 本节点**不写文件**（spec R10；run 级日志归 W6 agc_run_logger）。
 
 #include <yaml-cpp/yaml.h>
 
@@ -19,6 +27,7 @@
 #include <cmath>
 #include <deque>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -62,7 +71,8 @@ struct Obstacle
 // 一次采样（已加噪），延迟释放后转成观测消息
 struct ObsSample
 {
-  double t_obs{0.0};
+  double t_obs{0.0};          // 通道采样时刻（tick）
+  double t_target_src{0.0};   // 目标源采样时刻（入站 Header.stamp；spec R-004）
   bool has_target{false};
   double tx{0}, ty{0}, tz{0}, tyaw{0};
   uint32_t tseq{0};
@@ -137,6 +147,8 @@ public:
     obs_hz_ = declare_parameter<double>("obs_hz", 20.0);
     tol_m_ = declare_parameter<double>("confidence_tolerance_m", 0.25);
     seed_ = declare_parameter<std::string>("seed", "unseeded");
+    // 感知源寿命（spec R-004）：仅 declare，由 launch 单一注入，节点不得覆写（契约 [参数入口]）
+    source_timeout_s_ = declare_parameter<double>("source_timeout_s", 0.3);
 
     loadSensors();
     loadObstacles();
@@ -154,8 +166,9 @@ public:
       std::bind(&AirPerception::tick, this));
 
     RCLCPP_INFO(
-      get_logger(), "air_perception 就绪：通道=%zu 障碍=%zu obs_hz=%.1f tol=%.3f m 遮挡=%s（真值派生感知仿真）",
-      sensors_.size(), obstacles_.size(), obs_hz_, tol_m_, occlusion_enabled_ ? "on" : "off");
+      get_logger(), "air_perception 就绪：通道=%zu 障碍=%zu obs_hz=%.1f tol=%.3f m 源寿命=%.3f s 遮挡=%s（真值派生感知仿真）",
+      sensors_.size(), obstacles_.size(), obs_hz_, tol_m_, source_timeout_s_,
+      occlusion_enabled_ ? "on" : "off");
   }
 
 private:
@@ -177,11 +190,18 @@ private:
       RCLCPP_ERROR(get_logger(), "%s 缺 sensors 序列", sensors_file_.c_str());
       return;
     }
+    // R-038（见 ADR-0053）：seed 启动期合法性校验 —— 显式 `unseeded` 保留默认基种子；
+    //   其余必须为**整数字面量**。**删除**旧的静默 `strtol` 兜底（非数值输入曾静默退回 base_seed=1）。
     long base_seed = 1;
-    {
+    if (!seed_.empty() && seed_ != "unseeded") {
       char * endp = nullptr;
       const long v = std::strtol(seed_.c_str(), &endp, 10);
-      if (endp != seed_.c_str() && *endp == '\0') {base_seed = v;}
+      if (endp == seed_.c_str() || *endp != '\0') {
+        throw std::runtime_error(
+          "air_perception 非法 seed（拒绝启动）：seed=\"" + seed_ +
+          "\"（要求整数字面量或 \"unseeded\"；不静默退回默认基种子）。");
+      }
+      base_seed = v;
     }
     size_t idx = 0;
     for (const auto & n : list) {
@@ -268,17 +288,35 @@ private:
 
   void onTargetGt(const geometry_msgs::msg::PoseStamped & m)
   {
-    truth_ = {m.pose.position.x, m.pose.position.y, m.pose.position.z};
-    truth_yaw_ = agc::yawFromQuat(m.pose.orientation);
-    target_present_ = true;
+    // 源采样时刻 = 入站消息 Header.stamp（非接受/发布时刻）；旧包晚到不得刷新增龄（spec R-004）
+    const double s = rclcpp::Time(m.header.stamp).seconds();
+    if (!target_seen_ || s >= target_src_s_) {
+      truth_ = {m.pose.position.x, m.pose.position.y, m.pose.position.z};
+      truth_yaw_ = agc::yawFromQuat(m.pose.orientation);
+      target_src_s_ = s;
+    }
+    target_seen_ = true;
   }
 
   void onDroneOdom(const nav_msgs::msg::Odometry & m)
   {
-    drone_pos_ = {m.pose.pose.position.x, m.pose.pose.position.y, m.pose.pose.position.z};
-    drone_quat_ = {m.pose.pose.orientation.x, m.pose.pose.orientation.y,
-      m.pose.pose.orientation.z, m.pose.pose.orientation.w};
-    drone_pose_ok_ = true;
+    // 源采样时刻 = 入站消息 Header.stamp（非接受/发布时刻）；spec R-004
+    const double s = rclcpp::Time(m.header.stamp).seconds();
+    if (!drone_seen_ || s >= drone_src_s_) {
+      drone_pos_ = {m.pose.pose.position.x, m.pose.pose.position.y, m.pose.pose.position.z};
+      drone_quat_ = {m.pose.pose.orientation.x, m.pose.pose.orientation.y,
+        m.pose.pose.orientation.z, m.pose.pose.orientation.w};
+      drone_src_s_ = s;
+    }
+    drone_seen_ = true;
+  }
+
+  // 源寿命：源已见 且 年龄(now − 源采样时刻) ≤ source_timeout_s（≤0 视为不限时，兼容旧行为）
+  bool sourceFresh(bool seen, double src_s, double now_s) const
+  {
+    if (!seen) {return false;}
+    if (source_timeout_s_ <= 0.0) {return true;}
+    return (now_s - src_s) <= source_timeout_s_;
   }
 
   // 视场/距离门控：传感器原点 = 无人机位置，朝向 = 无人机姿态 × 机体系 boresight
@@ -406,6 +444,7 @@ private:
           out->tx = ox; out->ty = oy; out->tz = oz;
           out->tyaw = truth_yaw_;
           out->tseq = ++tseq_[si];
+          out->t_target_src = target_src_s_;   // 目标源采样时刻（供 TargetObservation.header.stamp）
         }
       }
     }
@@ -457,7 +496,9 @@ private:
     so.sensor_id = c.id;
     if (s.has_target) {
       agc_msgs::msg::TargetObservation to;
-      to.header.stamp = rclcpp::Time(static_cast<int64_t>(s.t_obs * 1e9), get_clock()->get_clock_type());
+      // header.stamp = **源采样时刻**（入站真值 Header.stamp），非通道 tick、非交付时刻（spec R-004）
+      to.header.stamp = rclcpp::Time(
+        static_cast<int64_t>(s.t_target_src * 1e9), get_clock()->get_clock_type());
       to.header.frame_id = world_frame_;
       to.target_id = target_id_;
       to.sensor_id = c.id;
@@ -472,6 +513,7 @@ private:
     }
     for (const auto & o : s.obs) {
       agc_msgs::msg::ObstacleObservation oo;
+      // header.stamp = 通道采样时刻（tick）：障碍真值静态，本拍由新鲜 odom 门控采得
       oo.header.stamp = rclcpp::Time(static_cast<int64_t>(s.t_obs * 1e9), get_clock()->get_clock_type());
       oo.header.frame_id = world_frame_;
       oo.obstacle_id = o.id;
@@ -494,6 +536,10 @@ private:
     const rclcpp::Time now_t = now();
     const double t = now_t.seconds();
     if (t <= 0.0) {return;}  // /clock 未就绪
+
+    // 由源寿命派生的瞬时有效标志（spec R-004）：非永久 true
+    target_present_ = sourceFresh(target_seen_, target_src_s_, t);
+    drone_pose_ok_ = sourceFresh(drone_seen_, drone_src_s_, t);
 
     agc_msgs::msg::AirObservationArray arr;
     arr.header.stamp = now_t;
@@ -536,10 +582,15 @@ private:
 
   std::array<double, 3> truth_{{0.0, 0.0, 0.0}};
   double truth_yaw_{0.0};
-  bool target_present_{false};
+  bool target_seen_{false};        // 是否曾收到目标真值（原始）
+  double target_src_s_{-1.0};      // 目标源采样时刻（入站 Header.stamp）
+  bool target_present_{false};     // 派生：源寿命内的瞬时有效（每 tick 重算）
   std::array<double, 3> drone_pos_{{0.0, 0.0, 0.0}};
   std::array<double, 4> drone_quat_{{0.0, 0.0, 0.0, 1.0}};
-  bool drone_pose_ok_{false};
+  bool drone_seen_{false};         // 是否曾收到无人机 odom（原始）
+  double drone_src_s_{-1.0};       // 无人机 odom 源采样时刻（入站 Header.stamp）
+  bool drone_pose_ok_{false};      // 派生：源寿命内的瞬时有效（每 tick 重算）
+  double source_timeout_s_{0.3};   // 源寿命期限（launch 单一注入）
 
   rclcpp::Publisher<agc_msgs::msg::AirObservationArray>::SharedPtr pub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_sub_;
