@@ -3,6 +3,16 @@
 ## Status
 accepted
 
+## 适用关系（S-10 校准）
+
+> 本节由结构评审 [S-10](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-10) 正式化（原 S-09 顶部注并入本节，**不**重复堆叠）；口径见 [ADR-0066](./0066-decision-applicability-and-reference-discipline.md)。本 ADR **历史正文不改**（演进不抹除），下游**只链接现适用**决策。
+
+- **适用范围（结论仍现行）**：「PX4 本体 = `toolchain/` 外部依赖，**不入 colcon、不入 git**；`px4_msgs` 内联 `src/`」的分工**仍然现行有效**。
+- **适用范围（版本）**：本 ADR 正文所记 uXRCE-DDS Agent `v2.4.2` 为 **P0 当时适用值**；**现行适用版本为 `v2.4.3`**（对系统 Fast DDS 2.14 / fastcdr 2.2 构建，与 ROS 2 Jazzy **同源**；`v2.4.2` 自建 DDS 2.11 跨版本不互通）。
+- **amends**：[ADR-0065](./0065-toolchain-rebuildable-pin-manifest.md) **amends** 本 ADR 的**版本适用值**（`2.4.2 → 2.4.3`），**不改**本 ADR 的分工结论。
+- **supersedes**：无（本 ADR 结论无后续取代者）。
+- **决议锚点**：版本、源 SHA / submodule / 构建选项 / 产物哈希以 [`toolchain/README.md`](../../toolchain/README.md)（**唯一入库 pin 清单**）为准；复现步骤见 Runbook [附录 B](../ROS2迁移步骤.md#appendix-b)。
+
 ## 背景与决策
 [ADR-0005](./0005-px4-link-uxrce-dds.md) 只决了**链路协议**（uXRCE-DDS + `px4_msgs`），
 未决"PX4 本体是否纳入项目、以何形态"。P0 已实际落地：`toolchain/PX4-Autopilot`（v1.15.4，
