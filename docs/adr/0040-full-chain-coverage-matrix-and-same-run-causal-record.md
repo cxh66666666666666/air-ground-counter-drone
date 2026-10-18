@@ -38,7 +38,7 @@ uXRCE-DDS Agent + 空中节点 + `takeoff_controller` 的 `/agc/air/release_cont
 以 `lightweight / full` × `GUI(headless / gui)` × `task_start` × `own_takeover(release_control)` ×
 `target_motion` × `real_terminal` 构造覆盖矩阵；每一格标 **covered / uncovered / not_applicable** +
 **evidence 出处**（产物路径 / 源文件事实）+ 未覆盖的**如实原因**。矩阵由
-[`w6_r025_check.py`](../../scripts/w6_r025_check.py) 静态核验源文件（后端能力列）+ 读产物生成，
+[`w6_r025_check.py`](../../tests/w6_r025_check.py) 静态核验源文件（后端能力列）+ 读产物生成，
 落 `<run_id>/coverage_matrix.md`。
 
 - **backend 能力列**（源文件事实）：`lightweight` = 0 PX4 实例 / 0 Agent / 无空中节点 / 无 takeover 服务端；
@@ -49,7 +49,7 @@ uXRCE-DDS Agent + 空中节点 + `takeoff_controller` 的 `/agc/air/release_cont
 
 ### (b) 同一 run 因果记录（探针，非节点代码）
 
-[`w6_r025_full_probe.py`](../../scripts/w6_r025_full_probe.py) 在**已运行**的 `w6_full.launch.py` 上执行，
+[`w6_r025_full_probe.py`](../../scripts/archive/w6_r025_full_probe.py) 在**已运行**的 `w6_full.launch.py` 上执行，
 在**同一 run（同一 run_id / 同一进程时间线）**回答全部 5 问：
 
 1. 等 `/agc/air/active_controller` 出现（`takeoff_controller`）→ 再额外等（己方起飞到悬停）；
@@ -71,7 +71,7 @@ uXRCE-DDS Agent + 空中节点 + `takeoff_controller` 的 `/agc/air/release_cont
   （由 `expected_terminal` / `expected_reason` / `backend` 生成，如「轻量栈（m0_skeleton+capture_adjudicator+jammer，
   headless）在 s08 达 `INTERCEPT_CONFIRMED(CAPTURE_NET)`（**非整链 / 非 C3 GUI 验收**）」）
   与 `pass`（= `expected_match` **且** backend 已标注）；report 加 `coverage` 汇总块（逐轴 value + evidence）。
-- [`w6_r025_full_probe.py`](../../scripts/w6_r025_full_probe.py) 的 `same_run.json` 亦给 `proposition` 与 `pass`。
+- [`w6_r025_full_probe.py`](../../scripts/archive/w6_r025_full_probe.py) 的 `same_run.json` 亦给 `proposition` 与 `pass`。
 - **不**把「期望字符串匹配」自动等价为整链 / C3 GUI 验收。
 
 ### (d) X-02 边界：只如实标注 backend / mode，**不改**契约 C3 文字

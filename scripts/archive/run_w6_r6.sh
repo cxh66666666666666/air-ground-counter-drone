@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run_w6_r6 —— W6-b R6（出生净空 / seed 可复现）一键验收（launch 背景 + 检查 + 清理）
-#   用法：scripts/run_w6_r6.sh [headless|gui] [run_id] [params_file] [--expect-reject]
+#   用法：scripts/archive/run_w6_r6.sh [headless|gui] [run_id] [params_file] [--expect-reject]
 set -o pipefail
 
 ROOT=/home/chen/AGC
@@ -37,7 +37,7 @@ trap cleanup EXIT
 
 echo "launch up (run_id=${RUN_ID}); 等待就绪 18 s ..."
 sleep 18
-python3 "${ROOT}/scripts/w6_r6_check.py" --run-id "${RUN_ID}" ${EXPECT}
+python3 "${ROOT}/tests/w6_r6_check.py" --run-id "${RUN_ID}" ${EXPECT}
 RC=$?
 echo "w6 r6 check rc=${RC}"
 exit "${RC}"

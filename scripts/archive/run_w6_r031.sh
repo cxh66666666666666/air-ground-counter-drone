@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r031 —— 评审 R-031（runner 三层验收判定与完整性硬门）一键验收
-#   用法：scripts/run_w6_r031.sh [run_id]
-#   例：  scripts/run_w6_r031.sh 20261016-r031-0
+#   用法：scripts/archive/run_w6_r031.sh [run_id]
+#   例：  scripts/archive/run_w6_r031.sh 20261016-r031-0
 #
 # 阶段：
 #   Phase A **实跑** episode_runner（轻量栈）跑 s01 两回合（seed 0/1），产物落 <RUN_ID>/runner/：
@@ -62,7 +62,7 @@ cleanup
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → metrics/r031.json"
-python3 "${ROOT}/scripts/w6_r031_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r031_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_B=${PIPESTATUS[0]}
 

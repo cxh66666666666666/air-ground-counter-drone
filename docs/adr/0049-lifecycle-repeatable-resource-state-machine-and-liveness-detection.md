@@ -113,8 +113,8 @@ bond 失联检测；manager 检测被管节点死亡 → 硬复位）。**不**�
 
 ### (f) 验收（实跑台架 + 自包含核查）
 
-新增 [`run_w6_r034.sh`](../../scripts/run_w6_r034.sh) + [`w6_r034_bench.py`](../../scripts/w6_r034_bench.py)
-（Phase A **实跑**真实节点 + 真实 `lifecycle_manager`）+ [`w6_r034_check.py`](../../scripts/w6_r034_check.py)
+新增 [`run_w6_r034.sh`](../../scripts/archive/run_w6_r034.sh) + [`w6_r034_bench.py`](../../scripts/archive/w6_r034_bench.py)
+（Phase A **实跑**真实节点 + 真实 `lifecycle_manager`）+ [`w6_r034_check.py`](../../tests/w6_r034_check.py)
 （Phase B 自包含核查）。覆盖：① `configure/activate/deactivate/cleanup` **循环 ≥2 轮**；② **direct shutdown**
 （ACTIVE→FINALIZED）；③ **error 注入**（错误类型参数 → configure 回调异常 → 生命周期 error → 完整清理）；
 ④ **manager / 被管节点死亡**（bond 失联可判 + 失效停机安全语义）。

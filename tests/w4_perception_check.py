@@ -2,7 +2,7 @@
 """w4_perception_check —— W4 验收：话题频率（±容差）+ 帧名（spec R9）。
 
 用法：
-  ros2 run（或 python3）scripts/w4_perception_check.py --duration 8 --tol 0.10
+  ros2 run（或 python3）tests/w4_perception_check.py --duration 8 --tol 0.10
 
 检查六话题频率（air/obs 20、targets 10、obstacles 10、ground/odom 30、map 2、gt/* 30）
 与 header.frame_id（须 world、无裸 base_link）。结果打印并落

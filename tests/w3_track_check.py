@@ -5,7 +5,7 @@
 契约 [硬约束] C1 判定：**全程恒速 `|v − 2.0| ≤ ε`、无加减速**。
 
 用法（落点须遵 ADR-0007：`experiments/<campaign>/<run_id>/{config,log,metrics,figures}/`）：
-  python3 scripts/w3_track_check.py --duration 40 \\
+  python3 tests/w3_track_check.py --duration 40 \\
       --out experiments/w3-air-link/<run_id>/metrics/c1_figure8.csv
 """
 

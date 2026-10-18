@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """w6_r023_check —— 评审 R-023（连续跟踪 dwell 逐拍判据中断）自包含 ROS 级验收 harness。
 
-结构拷贝自 `scripts/w6_r022_check.py`（自包含：不起 launch，自己充当「假源 + 假 reset 服务」桩环境，
+结构拷贝自 `tests/w6_r022_check.py`（自包含：不起 launch，自己充当「假源 + 假 reset 服务」桩环境，
 以 subprocess 直接起 `install/agc_task/lib/agc_task/task_manager` + 临时参数文件，`use_sim_time: False`，
 墙钟，规避无 `/clock` 时间冻结）；Popen 句柄 kill，**禁止** pkill -f "<名字>"（会匹配 shell 自身 → 自杀）。
 

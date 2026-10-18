@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w5_safety —— W5-c R9/R4/R5 场景一键跑（launch 背景 + 检查 + 清理）
-#   用法：scripts/run_w5_safety.sh [headless|gui] [run_id]
-#   例：  scripts/run_w5_safety.sh headless
-#         scripts/run_w5_safety.sh gui 20261013-pole-approach-intro
+#   用法：scripts/archive/run_w5_safety.sh [headless|gui] [run_id]
+#   例：  scripts/archive/run_w5_safety.sh headless
+#         scripts/archive/run_w5_safety.sh gui 20261013-pole-approach-intro
 set -o pipefail
 
 ROOT=/home/chen/AGC
@@ -39,7 +39,7 @@ trap cleanup EXIT
 
 echo "launch up (mode=${MODE}, pgid=${PGID}); 等待链路就绪 18 s ..."
 sleep 18
-python3 "${ROOT}/scripts/w5_safety_check.py" --duration 30 --run-id "${RUN_ID}"
+python3 "${ROOT}/tests/w5_safety_check.py" --duration 30 --run-id "${RUN_ID}"
 RC=$?
 echo "safety check rc=${RC}"
 exit "${RC}"

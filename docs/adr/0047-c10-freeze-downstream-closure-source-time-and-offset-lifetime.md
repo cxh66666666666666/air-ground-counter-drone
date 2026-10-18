@@ -101,10 +101,10 @@ offset_clamped, shield_active}`。**不**改冻结 9 消息 ABI；**不**新增�
 
 ### (g) 验收（实跑逻辑台架 + 自包含核查）
 
-新增 [`run_w6_r032.sh`](../../scripts/run_w6_r032.sh) + [`w6_r032_bench.py`](../../scripts/w6_r032_bench.py)
+新增 [`run_w6_r032.sh`](../../scripts/archive/run_w6_r032.sh) + [`w6_r032_bench.py`](../../scripts/archive/w6_r032_bench.py)
 （Phase A **实跑**真实 `trajectory_tracker`，合成驱动发布 odom / active_controller / tracking_ref /
 targets / rl_offset，订阅 `/fmu/in/trajectory_setpoint` 重建**有效参考** + `/agc/air/tracking_status`）+
-[`w6_r032_check.py`](../../scripts/w6_r032_check.py)（读台架证据 + 静态核查）。四场景：
+[`w6_r032_check.py`](../../tests/w6_r032_check.py)（读台架证据 + 静态核查）。四场景：
 
 - **a 已获后失参考**：停发 `tracking_ref`（目标仍新鲜）→ hold（位置保持、**不**回落八字）。
 - **b 旧 ref 重放**：`header.stamp` 为 3 s 前 → 按源时间拒 → 保持基础八字（**未**被旧包推移）。

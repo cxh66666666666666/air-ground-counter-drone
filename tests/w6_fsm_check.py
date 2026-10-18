@@ -10,7 +10,7 @@
 结果落 `experiments/w6-task-eval/<run_id>/metrics/fsm.json`（ADR-0007）。
 
 用法（launch 已在运行）：
-  python3 scripts/w6_fsm_check.py --run-id 20261014-w6-fsm-0
+  python3 tests/w6_fsm_check.py --run-id 20261014-w6-fsm-0
 """
 
 import argparse

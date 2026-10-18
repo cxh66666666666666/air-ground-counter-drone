@@ -3,7 +3,7 @@
 # ---- 几何真源（S-06；ADR-0062）----
 # 静态障碍**实体几何**的唯一真源为 `agc_sim/config/world_geometry.yaml`。本文件是
 # **standalone 回退副本**（供不经 w6_composition 的 standalone perception_bringup / air_bringup
-# 使用），**须与真源一致**（由 `scripts/w6_geometry_check.py` 校验）。w6 运行路径的障碍文件
+# 使用），**须与真源一致**（由 `tests/w6_geometry_check.py` 校验）。w6 运行路径的障碍文件
 # 由真源**派生生成**（`w6_composition.write_derived_obstacles`），不读本副本。
 #
 # ---- R-006 静态先验（static 层）成文假设（2026-10-15）----

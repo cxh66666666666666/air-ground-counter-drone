@@ -83,7 +83,7 @@ accepted
 
 ### (f) 验收脚本与产物
 
-新增 [`w6_r026_check.py`](../../scripts/w6_r026_check.py) + [`run_w6_r026.sh`](../../scripts/run_w6_r026.sh)：
+新增 [`w6_r026_check.py`](../../tests/w6_r026_check.py) + [`run_w6_r026.sh`](../../scripts/archive/run_w6_r026.sh)：
 轻量实跑 none/static/linear/maneuver/dropout/fov 采集 manifest 与「none 世界生成」产物，验证 dynamic 拒绝运行，
 核查覆盖账本与「实际 == 声明」；产物落 `experiments/w6-task-eval/<run_id>/{manifests,worlds,lightweight,metrics/r026.json,log}`。
 

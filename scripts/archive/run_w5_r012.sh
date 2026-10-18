@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w5_r012 —— W5 R-012 基线路径绑定与重规划失效安全故障注入一键跑（launch 背景 + 检查 + 清理）
-#   用法：scripts/run_w5_r012.sh [gui|headless] [run_id]
+#   用法：scripts/archive/run_w5_r012.sh [gui|headless] [run_id]
 #   以 `command_source:=baseline` 起 W5 场景（离线对照基线为命令源），
-#   子测（另见 scripts/w5_r012_check.py）：d 不抖动 / a 地图增障重规划 / b 目标跳变 / c 不可达失效停车。
+#   子测（另见 tests/w5_r012_check.py）：d 不抖动 / a 地图增障重规划 / b 目标跳变 / c 不可达失效停车。
 #   lifecycle bringup 偶发卡死（costmap change_state 超时）→ 最多重试 3 次。
 # 注：清理**禁止** pkill -f "<名字>"（会匹配 shell 自身命令行 → 自杀）；用 "[x]xx" 写法规避。
 set -o pipefail
@@ -65,7 +65,7 @@ for attempt in 1 2 3; do
   echo "launch up (mode=${MODE}, source=baseline, attempt=${attempt}, pgid=${PGID}); 等待链路就绪 18 s ..."
   sleep 18
 
-  python3 "${ROOT}/scripts/w5_r012_check.py" --run-id "${RUN_ID}" --mode "${MODE}" \
+  python3 "${ROOT}/tests/w5_r012_check.py" --run-id "${RUN_ID}" --mode "${MODE}" \
     2>&1 | tee "${OUT}/log/check-${attempt}.log"
   RC=${PIPESTATUS[0]}
   cleanup

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run_w5_r007 —— W5 R-007 真实仿真验收一键跑（launch 背景 + 杀 RL 命令源 + 脚本化命令源检查 + 清理）
-#   用法：scripts/run_w5_r007.sh [headless|gui] [run_id]
+#   用法：scripts/archive/run_w5_r007.sh [headless|gui] [run_id]
 #   lifecycle bringup 偶发卡死（costmap change_state 超时）→ 最多重试 3 次。
 set -o pipefail
 
@@ -61,7 +61,7 @@ for attempt in 1 2 3; do
   pkill -TERM -f "[g]round_policy_rl" 2>/dev/null
   sleep 2
 
-  python3 "${ROOT}/scripts/w5_r007_check.py" --run-id "${RUN_ID}"
+  python3 "${ROOT}/tests/w5_r007_check.py" --run-id "${RUN_ID}"
   RC=$?
   cleanup
   trap - EXIT

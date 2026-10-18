@@ -120,8 +120,8 @@ ground 映射适用性标注 / 可达性对拍、安全层平行数组长度一�
   （非法 `Q/R/dt` 拒绝、DARE 未收敛报告、只读诊断）；`agc_air` gtest
   [`test_safety_shield_validation.cpp`](../../src/agc_air/test/test_safety_shield_validation.cpp)（平行数组不一致 /
   非法几何拒绝 + 合法几何通过）。
-- [`run_w6_r038.sh`](../../scripts/run_w6_r038.sh) + [`w6_r038_bench.py`](../../scripts/w6_r038_bench.py)（**实跑**真实节点
-  启动期拒绝）+ [`w6_r038_check.py`](../../scripts/w6_r038_check.py)（自包含核查，判 (a)…(k)）。
+- [`run_w6_r038.sh`](../../scripts/archive/run_w6_r038.sh) + [`w6_r038_bench.py`](../../scripts/archive/w6_r038_bench.py)（**实跑**真实节点
+  启动期拒绝）+ [`w6_r038_check.py`](../../tests/w6_r038_check.py)（自包含核查，判 (a)…(k)）。
 
 ### (f) 边界（不改契约）
 

@@ -165,8 +165,8 @@ def case_g_adr():
 
 def case_h_scripts_hygiene():
     """无 `rm -rf`、无裸名 `pkill`；bench 用 killpg + wait。"""
-    bench_txt = _read(os.path.join(ROOT, 'scripts/w6_r035_bench.py')) or ''
-    sh_txt = _read(os.path.join(ROOT, 'scripts/run_w6_r035.sh')) or ''
+    bench_txt = _read(os.path.join(ROOT, 'scripts/archive/w6_r035_bench.py')) or ''
+    sh_txt = _read(os.path.join(ROOT, 'scripts/archive/run_w6_r035.sh')) or ''
     bench_code = _code_only(bench_txt)
     sh_code = _code_only(sh_txt)
     res = {

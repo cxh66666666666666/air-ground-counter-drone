@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r026 —— 评审 R-026（场景轴承载者校验与覆盖记账）一键验收
-#   用法：scripts/run_w6_r026.sh [run_id]
-#   例：  scripts/run_w6_r026.sh 20261016-r026-0
+#   用法：scripts/archive/run_w6_r026.sh [run_id]
+#   例：  scripts/archive/run_w6_r026.sh 20261016-r026-0
 #
 # 阶段：
 #   Phase A 轻量实跑（逐场景短时 launch）：none/static/linear/maneuver/dropout/fov 各起一次，
@@ -89,7 +89,7 @@ cleanup
 
 # ---------------- Phase D：自包含核查 ----------------
 echo "[Phase D] 核查 → metrics/r026.json"
-python3 "${ROOT}/scripts/w6_r026_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r026_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-d-check.log"
 RC_D=${PIPESTATUS[0]}
 

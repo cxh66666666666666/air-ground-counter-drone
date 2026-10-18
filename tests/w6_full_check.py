@@ -9,7 +9,7 @@
 结果落 `experiments/w6-task-eval/<run_id>/metrics/full.json`。
 
 用法：
-  python3 scripts/w6_full_check.py --motion linear --duration 8 --run-id 20261014-w6-full-s02
+  python3 tests/w6_full_check.py --motion linear --duration 8 --run-id 20261014-w6-full-s02
 """
 
 import argparse

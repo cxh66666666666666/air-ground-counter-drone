@@ -118,9 +118,9 @@ Nav2 侧为**参数校验 + footprint/覆盖声明**，制动能力标定属本�
 
 ### (d) 验收（实跑台架 + 自包含核查）
 
-新增 [`run_w6_r037.sh`](../../scripts/run_w6_r037.sh) + [`w6_r037_bench.py`](../../scripts/w6_r037_bench.py)
+新增 [`run_w6_r037.sh`](../../scripts/archive/run_w6_r037.sh) + [`w6_r037_bench.py`](../../scripts/archive/w6_r037_bench.py)
 （**Phase A 实跑**：起最小 gz 场景 = `world_bringup`（世界 + 桥 + spawn 换装后 `agc_car`）+ `ground_drive_relay`（唯一执行口）
-+ `gt_bypass`（真值），经唯一执行口驱动并采真值 / 接触）+ [`w6_r037_check.py`](../../scripts/w6_r037_check.py)
++ `gt_bypass`（真值），经唯一执行口驱动并采真值 / 接触）+ [`w6_r037_check.py`](../../tests/w6_r037_check.py)
 （**Phase B 自包含核查** (a)…(j)）。覆盖：a 传感器高度如实登记；b 安全声明已收窄（含「不外推任意障碍」）；
 c 载荷外伸/碰撞口径一致；d 满速制动真值/接触证据 或 如实 `unsupported`；e 转弯扫掠/摩擦敏感性同上；
 f 未改物理/惯性/驱动插件（**对 R-037 之前的模型基线**核验）；g 保留 DiffDrive、未回退 `kinematic_sim`；

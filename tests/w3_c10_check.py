@@ -12,7 +12,7 @@
   | `freeze` | 目标过期（`ref_max_age_s`）后**冻结不追**：末端位移 ≤ 阈值，且 `tracking_ref` 仍在发布 |
 
 用法（落点须遵 ADR-0007）：
-  python3 scripts/w3_c10_check.py --phase circle --duration 60 \\
+  python3 tests/w3_c10_check.py --phase circle --duration 60 \\
       --out experiments/w3-air-link/<run_id>/metrics/c10_p1_circle.csv
 """
 

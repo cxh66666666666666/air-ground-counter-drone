@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r028 —— 评审 R-028（episode 窗口统计、终态锁存与有效样本掩码）一键验收
-#   用法：scripts/run_w6_r028.sh [run_id]
-#   例：  scripts/run_w6_r028.sh 20261016-r028-0
+#   用法：scripts/archive/run_w6_r028.sh [run_id]
+#   例：  scripts/archive/run_w6_r028.sh 20261016-r028-0
 #
 # 阶段：
 #   Phase A 合成 harness：w6_r028_harness.py 以确定性合成诊断数据（/clock / odom / scan / cm /
@@ -51,7 +51,7 @@ cleanup
 
 # ---------------- Phase A：合成 harness（6 个确定性 case） ----------------
 echo "[Phase A] w6_r028_harness.py（合成诊断数据）→ ${RUN_ID}/summaries/"
-python3 "${ROOT}/scripts/w6_r028_harness.py" --out-dir "${OUT}/summaries" \
+python3 "${ROOT}/scripts/archive/w6_r028_harness.py" --out-dir "${OUT}/summaries" \
   > "${OUT}/log/phase-a-harness.log" 2>&1
 echo "[Phase A] harness rc=$?"
 tail -n 40 "${OUT}/log/phase-a-harness.log" || true
@@ -76,7 +76,7 @@ fi
 
 # ---------------- Phase C：自包含核查 ----------------
 echo "[Phase C] 核查 → metrics/r028.json"
-python3 "${ROOT}/scripts/w6_r028_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r028_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-c-check.log"
 RC_C=${PIPESTATUS[0]}
 

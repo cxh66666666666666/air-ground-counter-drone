@@ -10,7 +10,7 @@
 结果落 `experiments/w5-ground-nav-safety/<run_id>/metrics/fullchain.json`（ADR-0007）。
 
 用法：
-  python3 scripts/w5_fullchain_check.py --duration 8 --run-id <YYYYMMDD>-fullchain-0
+  python3 tests/w5_fullchain_check.py --duration 8 --run-id <YYYYMMDD>-fullchain-0
 """
 
 import argparse

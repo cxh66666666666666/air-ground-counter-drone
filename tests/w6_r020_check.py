@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """w6_r020_check —— 评审 R-020（占位包络标注 + 高度含车体 + 独立干扰包络）自包含 ROS 级验收 harness。
 
-结构拷贝自 `scripts/w6_r019_check.py`：**本脚本不起 launch**（自包含），自己充当「假 odom /
+结构拷贝自 `tests/w6_r019_check.py`：**本脚本不起 launch**（自包含），自己充当「假 odom /
 目标源」桩环境，以 subprocess 直接起 `install/agc_task/lib/agc_task/{capture_adjudicator,
 jammer}` + 临时参数文件（`use_sim_time: False`，墙钟，规避无 `/clock` 时间冻结），无需 gz / launch。
 

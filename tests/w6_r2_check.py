@@ -9,7 +9,7 @@
 结果落 `experiments/w6-task-eval/<run_id>/metrics/r2.json`（ADR-0007）。
 
 用法（launch 刚起时即执行，勿等待）：
-  python3 scripts/w6_r2_check.py --run-id 20261014-w6-r2-0
+  python3 tests/w6_r2_check.py --run-id 20261014-w6-r2-0
 """
 
 import argparse

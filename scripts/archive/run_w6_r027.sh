@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r027 —— 评审 R-027（安全不可行率诚实口径与真实接触证据）一键验收
-#   用法：scripts/run_w6_r027.sh [run_id]
-#   例：  scripts/run_w6_r027.sh 20261016-r027-0
+#   用法：scripts/archive/run_w6_r027.sh [run_id]
+#   例：  scripts/archive/run_w6_r027.sh 20261016-r027-0
 #
 # 阶段：
 #   Phase A 负对照（阈值外缓停不计碰撞）：episode_runner 跑 s11（车朝 pole_1 直行、安全层提前停车）
@@ -100,7 +100,7 @@ fi
 
 # ---------------- Phase C：自包含核查 ----------------
 echo "[Phase C] 核查 → metrics/r027.json"
-python3 "${ROOT}/scripts/w6_r027_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r027_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-c-check.log"
 RC_C=${PIPESTATUS[0]}
 

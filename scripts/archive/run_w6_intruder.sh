@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run_w6_intruder —— W6-a R4（目标 driver 三种运动）命令化验收（逐类型起 driver + 检查 + 清理）
-#   用法：scripts/run_w6_intruder.sh [run_id]
+#   用法：scripts/archive/run_w6_intruder.sh [run_id]
 set -o pipefail
 
 ROOT=/home/chen/AGC
@@ -19,7 +19,7 @@ for m in static linear maneuver; do
     > "${OUT}/log/intruder_${m}.log" 2>&1 &
   DPID=$!
   sleep 2
-  python3 "${ROOT}/scripts/w6_intruder_check.py" --motion "${m}" --run-id "${RUN_ID}" || RC=1
+  python3 "${ROOT}/tests/w6_intruder_check.py" --motion "${m}" --run-id "${RUN_ID}" || RC=1
   kill -9 "${DPID}" 2>/dev/null
   pkill -9 -f "intruder_driver" 2>/dev/null
   sleep 1

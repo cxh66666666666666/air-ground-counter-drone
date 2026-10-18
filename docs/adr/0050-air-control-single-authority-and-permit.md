@@ -108,8 +108,8 @@ reliable；参数 `control_permit_topic`）。每条 claim 为 JSON（`std_msgs/
 
 ### (h) 验收（实跑台架 + 自包含核查）
 
-新增 [`run_w6_r035.sh`](../../scripts/run_w6_r035.sh) + [`w6_r035_bench.py`](../../scripts/w6_r035_bench.py)
-（Phase A **实跑**真节点 + 真 `lifecycle_manager`）+ [`w6_r035_check.py`](../../scripts/w6_r035_check.py)
+新增 [`run_w6_r035.sh`](../../scripts/archive/run_w6_r035.sh) + [`w6_r035_bench.py`](../../scripts/archive/w6_r035_bench.py)
+（Phase A **实跑**真节点 + 真 `lifecycle_manager`）+ [`w6_r035_check.py`](../../tests/w6_r035_check.py)
 （Phase B 自包含核查）。覆盖：① 迟到 `release_control`；② 重复节点；③ manager 重启；④ 静默 publisher（**不**误报）。
 
 ### (i) 边界（不改契约）

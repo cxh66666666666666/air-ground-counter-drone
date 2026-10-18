@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """w6_r019_check —— 评审 R-019（failsafe 因子分离 + 运行时参数锁定）自包含 ROS 级验收 harness。
 
-结构拷贝自 `scripts/w6_r018_check.py`：**本脚本不起 launch**（自包含），自己充当「假 PX4」与
+结构拷贝自 `tests/w6_r018_check.py`：**本脚本不起 launch**（自包含），自己充当「假 PX4」与
 「task_manager 桩环境」，以 subprocess 直接起 `install/agc_task/lib/agc_task/jammer`
 + 临时参数文件，无需 gz / launch。
 

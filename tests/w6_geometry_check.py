@@ -11,7 +11,7 @@
       的 manifest `geometry` 块 == 真源。
   (g) 「谁可见何种信息」权限未被真源混用：`obstacles.yaml` 静态先验成文假设仍在。
 
-输出 JSON 摘要（stdout）；`--out <path>` 落盘。用法：`python3 scripts/w6_geometry_check.py`。
+输出 JSON 摘要（stdout）；`--out <path>` 落盘。用法：`python3 tests/w6_geometry_check.py`。
 """
 
 import argparse

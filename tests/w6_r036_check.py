@@ -242,8 +242,8 @@ def case_i_adr_0051():
 
 def case_j_scripts_hygiene():
     """无 `rm -rf`、无裸名 `pkill`；bench 用 killpg + wait。"""
-    bench_code = _code_only(_read(os.path.join(ROOT, 'scripts/w6_r036_bench.py')) or '')
-    sh_code = _code_only(_read(os.path.join(ROOT, 'scripts/run_w6_r036.sh')) or '')
+    bench_code = _code_only(_read(os.path.join(ROOT, 'scripts/archive/w6_r036_bench.py')) or '')
+    sh_code = _code_only(_read(os.path.join(ROOT, 'scripts/archive/run_w6_r036.sh')) or '')
     res = {
         'bench_no_rm_rf': 'rm -rf' not in bench_code,
         'sh_no_rm_rf': 'rm -rf' not in sh_code,

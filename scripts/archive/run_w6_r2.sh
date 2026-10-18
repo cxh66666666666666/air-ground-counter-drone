@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r2 —— W6-a R2（门禁与 episode 起始时序）一键验收（launch 背景 + 尽早介入 + 清理）
-#   用法：scripts/run_w6_r2.sh [headless|gui] [run_id]
-#   例：  scripts/run_w6_r2.sh headless 20261014-w6-r2-0
+#   用法：scripts/archive/run_w6_r2.sh [headless|gui] [run_id]
+#   例：  scripts/archive/run_w6_r2.sh headless 20261014-w6-r2-0
 #   注意：与 run_w6_fsm.sh 不同，本脚本**不等待**链路就绪 —— 需尽早调用 start 以观察"未就绪被拒"。
 set -o pipefail
 
@@ -39,7 +39,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "launch up (mode=${MODE}, run_id=${RUN_ID}, pgid=${PGID}); 立即执行 R2 检查 ..."
-python3 "${ROOT}/scripts/w6_r2_check.py" --run-id "${RUN_ID}"
+python3 "${ROOT}/tests/w6_r2_check.py" --run-id "${RUN_ID}"
 RC=$?
 echo "w6 r2 check rc=${RC}"
 exit "${RC}"

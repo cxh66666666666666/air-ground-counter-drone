@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r033 —— 评审 R-033（UAV 联合安全屏障与显式不可行路径）一键验收
-#   用法：scripts/run_w6_r033.sh [run_id]
-#   例：  scripts/run_w6_r033.sh 20261017-r033-0
+#   用法：scripts/archive/run_w6_r033.sh [run_id]
+#   例：  scripts/archive/run_w6_r033.sh 20261017-r033-0
 #
 # 阶段：
 #   Phase A **实跑** R-033 逻辑台架（w6_r033_bench.py）：起真实 trajectory_tracker（configure/activate，
@@ -35,7 +35,7 @@ cleanup
 
 # ---------------- Phase A：实跑 R-033 逻辑台架 ----------------
 echo "[Phase A] R-033 逻辑台架（trajectory_tracker + 联合安全屏障）→ ${RUN_ID}/r033/bench.json"
-python3 "${ROOT}/scripts/w6_r033_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r033_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-a-bench.log" 2>&1
 echo "$?" > "${OUT}/r033/bench_rc.txt"
 echo "[Phase A] bench rc=$(cat "${OUT}/r033/bench_rc.txt")"
@@ -43,7 +43,7 @@ cleanup
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → metrics/r033.json"
-python3 "${ROOT}/scripts/w6_r033_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r033_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_B=${PIPESTATUS[0]}
 

@@ -247,8 +247,8 @@ def case_i_adr():
 # (j) 脚本卫生
 # =====================================================================================
 def case_j_scripts_hygiene():
-    bench_code = _code_only(_read('scripts/w6_r037_bench.py') or '')
-    sh_code = _code_only(_read('scripts/run_w6_r037.sh') or '')
+    bench_code = _code_only(_read('scripts/archive/w6_r037_bench.py') or '')
+    sh_code = _code_only(_read('scripts/archive/run_w6_r037.sh') or '')
     res = {
         'bench_no_rm_rf': 'rm -rf' not in bench_code,
         'sh_no_rm_rf': 'rm -rf' not in sh_code,

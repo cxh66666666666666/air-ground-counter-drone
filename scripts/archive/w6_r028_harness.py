@@ -5,7 +5,7 @@
 只用 `/clock`、`/agc/ground/odom`、`/agc/ground/scan`、`/collision_monitor_state`、`/agc/task/state`），
 以可控复现「陈旧 scan / 预热 / 终态锁存 / 无 scan 拒绝 / 无任务拒绝」。
 
-用法：`python3 scripts/w6_r028_harness.py --out-dir <RUN_ID>/summaries [--cases a,b,...]`
+用法：`python3 scripts/archive/w6_r028_harness.py --out-dir <RUN_ID>/summaries [--cases a,b,...]`
 
 每个 case：起一个 `run_logger`（`use_sim_time:=true`，`contact_topic:=` 空），等 1.5s 后按脚本发布；
 发布完成后对 logger 进程 SIGINT，待其 finalize 落 `summary.json`。用 glob + mtime 定位该 case 的

@@ -296,8 +296,8 @@ def case_i_adr():
 def case_j_script_hygiene():
     # 仅核查**执行用**脚本（run_w6_r038.sh + w6_r038_bench.py）。核查脚本本身必然含
     # `rm -rf` / `pkill` 等字面量（作为被检 token），故不纳入本项（避免自指误判）。
-    sh = _code_only(_read(os.path.join(ROOT, 'scripts/run_w6_r038.sh')) or '')
-    bch = _code_only(_read(os.path.join(ROOT, 'scripts/w6_r038_bench.py')) or '')
+    sh = _code_only(_read(os.path.join(ROOT, 'scripts/archive/run_w6_r038.sh')) or '')
+    bch = _code_only(_read(os.path.join(ROOT, 'scripts/archive/w6_r038_bench.py')) or '')
     res = {
         'sh_no_rm_rf': 'rm -rf' not in sh,
         'bench_no_rm_rf': 'rm -rf' not in bch,

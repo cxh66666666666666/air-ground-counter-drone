@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r040 —— 评审 R-040（地图内容身份与单调更新序号）一键验收
-#   用法：scripts/run_w6_r040.sh [run_id]
-#   例：  scripts/run_w6_r040.sh 20261018-w6-r040-0
+#   用法：scripts/archive/run_w6_r040.sh [run_id]
+#   例：  scripts/archive/run_w6_r040.sh 20261018-w6-r040-0
 #
 # 阶段：
 #   Phase A **实跑**节点行为台架（w6_r040_bench.py，真实 map_adapter 二进制 + 合成障碍流）：
@@ -33,7 +33,7 @@ cleanup
 
 # ---------------- Phase A：节点行为台架（真实二进制） ----------------
 echo "[Phase A] 台架（真实二进制）→ ${RUN_ID}/r040/bench.json"
-python3 "${ROOT}/scripts/w6_r040_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r040_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-a-bench.log" 2>&1
 echo "$?" > "${OUT}/r040/bench_rc.txt"
 echo "[Phase A] bench rc=$(cat "${OUT}/r040/bench_rc.txt")"
@@ -41,7 +41,7 @@ cleanup
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → r040/check.json + metrics/r040.json"
-python3 "${ROOT}/scripts/w6_r040_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r040_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_C=${PIPESTATUS[0]}
 

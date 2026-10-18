@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w5_fullchain —— W5-c R10 全链回归一键跑（launch 背景 + 检查 + 清理）
-#   用法：scripts/run_w5_fullchain.sh [headless|gui] [rl|baseline] [run_id]
-#   例：  scripts/run_w5_fullchain.sh headless rl
-#         scripts/run_w5_fullchain.sh gui baseline 20261013-fullchain-baseline
+#   用法：scripts/archive/run_w5_fullchain.sh [headless|gui] [rl|baseline] [run_id]
+#   例：  scripts/archive/run_w5_fullchain.sh headless rl
+#         scripts/archive/run_w5_fullchain.sh gui baseline 20261013-fullchain-baseline
 set -o pipefail
 
 ROOT=/home/chen/AGC
@@ -41,7 +41,7 @@ trap cleanup EXIT
 
 echo "launch up (mode=${MODE}, command_source=${SOURCE}, pgid=${PGID}); 等待链路就绪 18 s ..."
 sleep 18
-python3 "${ROOT}/scripts/w5_fullchain_check.py" --duration 8 --run-id "${RUN_ID}"
+python3 "${ROOT}/tests/w5_fullchain_check.py" --duration 8 --run-id "${RUN_ID}"
 RC=$?
 echo "fullchain check rc=${RC}"
 exit "${RC}"

@@ -91,7 +91,7 @@ accepted
 
 ### (f) 验收脚本与产物
 
-新增 [`run_w6_r031.sh`](../../scripts/run_w6_r031.sh) + [`w6_r031_check.py`](../../scripts/w6_r031_check.py)：
+新增 [`run_w6_r031.sh`](../../scripts/archive/run_w6_r031.sh) + [`w6_r031_check.py`](../../tests/w6_r031_check.py)：
 Phase A **实跑** episode_runner（轻量栈 s01 seed 0/1 两回合）；Phase B 自包含核查——Case a 三层判定逻辑、
 Case b 缺 summary 不剔分母、Case c 空集合 `not_applicable`（直接 import 判定 / 汇总纯函数）、Case d **实跑**
 报告三层全过、Case e 脚本卫生（无 `rm -rf` / 裸名 `pkill`，含 `killpg` + `wait`）、Case f ADR-0046、

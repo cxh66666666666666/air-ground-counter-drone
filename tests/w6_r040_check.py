@@ -270,8 +270,8 @@ def case_h_abi_single_commander_section():
 
 
 def case_i_script_hygiene():
-    sh = _code_only(_read(os.path.join(ROOT, 'scripts/run_w6_r040.sh')) or '')
-    bch = _code_only(_read(os.path.join(ROOT, 'scripts/w6_r040_bench.py')) or '')
+    sh = _code_only(_read(os.path.join(ROOT, 'scripts/archive/run_w6_r040.sh')) or '')
+    bch = _code_only(_read(os.path.join(ROOT, 'scripts/archive/w6_r040_bench.py')) or '')
     res = {
         'sh_no_rm_rf': 'rm -rf' not in sh,
         'bench_no_rm_rf': 'rm -rf' not in bch,

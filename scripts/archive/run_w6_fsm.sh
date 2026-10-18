@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w6_fsm —— W6-a R1/R3（任务状态机 / 成功失败判定）一键验收（launch 背景 + 检查 + 清理）
-#   用法：scripts/run_w6_fsm.sh [headless|gui] [run_id] [params_file]
-#   例：  scripts/run_w6_fsm.sh headless 20261014-w6-fsm-0
-#         scripts/run_w6_fsm.sh headless 20261014-w6-c4-0 <agc_task>/config/w6_c4_timeout.yaml
+#   用法：scripts/archive/run_w6_fsm.sh [headless|gui] [run_id] [params_file]
+#   例：  scripts/archive/run_w6_fsm.sh headless 20261014-w6-fsm-0
+#         scripts/archive/run_w6_fsm.sh headless 20261014-w6-c4-0 <agc_task>/config/w6_c4_timeout.yaml
 set -o pipefail
 
 ROOT=/home/chen/AGC
@@ -51,7 +51,7 @@ trap cleanup EXIT
 
 echo "launch up (mode=${MODE}, run_id=${RUN_ID}, pgid=${PGID}); 等待链路就绪 18 s ..."
 sleep 18
-python3 "${ROOT}/scripts/w6_fsm_check.py" --duration 150 --run-id "${RUN_ID}"
+python3 "${ROOT}/tests/w6_fsm_check.py" --duration 150 --run-id "${RUN_ID}"
 RC=$?
 echo "w6 fsm check rc=${RC}"
 exit "${RC}"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r029 —— 评审 R-029（唯一运行身份与可复现证据）一键验收
-#   用法：scripts/run_w6_r029.sh [run_id]
-#   例：  scripts/run_w6_r029.sh 20261016-r029-0
+#   用法：scripts/archive/run_w6_r029.sh [run_id]
+#   例：  scripts/archive/run_w6_r029.sh 20261016-r029-0
 #
 # 阶段：
 #   Phase A 唯一不覆盖：同场景同 seed 连跑两次 run_logger → 落到**两个不同** run 目录（含时刻+随机后缀）。
@@ -134,7 +134,7 @@ cleanup
 
 # ---------------- Phase F：自包含核查 ----------------
 echo "[Phase F] 核查 → metrics/r029.json"
-python3 "${ROOT}/scripts/w6_r029_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r029_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-f-check.log"
 RC_F=${PIPESTATUS[0]}
 

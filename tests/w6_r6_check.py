@@ -6,7 +6,7 @@
   * randomize=true 时同 seed 两次生成应一致（可复现，C7）；
   * randomize=false 且 spawn 过近（< 下限）时 reset 应被拒（success=false）。
 
-用法（launch 就绪后）：python3 scripts/w6_r6_check.py --run-id ... --expect-random
+用法（launch 就绪后）：python3 tests/w6_r6_check.py --run-id ... --expect-random
 """
 
 import argparse

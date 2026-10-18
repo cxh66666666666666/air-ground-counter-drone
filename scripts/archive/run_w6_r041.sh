@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r041 —— 评审 R-041（目标失效策略与位移阈值化重规划）一键验收
-#   用法：scripts/run_w6_r041.sh [run_id]
-#   例：  scripts/run_w6_r041.sh 20261018-w6-r041-0
+#   用法：scripts/archive/run_w6_r041.sh [run_id]
+#   例：  scripts/archive/run_w6_r041.sh 20261018-w6-r041-0
 #
 # 阶段：
 #   Phase A **实跑**节点行为台架（w6_r041_bench.py，真实 task_manager / ground_baseline 二进制 + 合成输入）：
@@ -35,7 +35,7 @@ cleanup
 
 # ---------------- Phase A：节点行为台架（真实二进制） ----------------
 echo "[Phase A] 台架（真实二进制）→ ${RUN_ID}/r041/bench.json"
-python3 "${ROOT}/scripts/w6_r041_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r041_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-a-bench.log" 2>&1
 echo "$?" > "${OUT}/r041/bench_rc.txt"
 echo "[Phase A] bench rc=$(cat "${OUT}/r041/bench_rc.txt")"
@@ -43,7 +43,7 @@ cleanup
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → r041/check.json + metrics/r041.json"
-python3 "${ROOT}/scripts/w6_r041_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r041_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_C=${PIPESTATUS[0]}
 

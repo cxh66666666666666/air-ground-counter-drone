@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r038 —— 评审 R-038（数值模型暴露与配置合法性启动校验）一键验收
-#   用法：scripts/run_w6_r038.sh [run_id]
-#   例：  scripts/run_w6_r038.sh 20261017-w6-r038-0
+#   用法：scripts/archive/run_w6_r038.sh [run_id]
+#   例：  scripts/archive/run_w6_r038.sh 20261017-w6-r038-0
 #
 # 阶段：
 #   Phase A **实跑**失败型 gtest（真实二进制；不写镜像实现测试）：
@@ -56,7 +56,7 @@ echo "${A_RC}" > "${OUT}/r038/gtest_rc.txt"
 
 # ---------------- Phase B：节点启动期拒绝台架 ----------------
 echo "[Phase B] 节点启动期拒绝台架（真实节点）→ ${RUN_ID}/r038/bench.json"
-python3 "${ROOT}/scripts/w6_r038_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r038_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-b-bench.log" 2>&1
 echo "$?" > "${OUT}/r038/bench_rc.txt"
 echo "[Phase B] bench rc=$(cat "${OUT}/r038/bench_rc.txt")"
@@ -64,7 +64,7 @@ cleanup
 
 # ---------------- Phase C：自包含核查 ----------------
 echo "[Phase C] 核查 → r038/check.json + metrics/r038.json"
-python3 "${ROOT}/scripts/w6_r038_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r038_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-c-check.log"
 RC_C=${PIPESTATUS[0]}
 

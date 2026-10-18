@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w5_r010 —— W5 R-010 RL 输入许可与失效停车一键跑
-#   用法：scripts/run_w5_r010.sh [gui|headless] [run_id] [scenario]
+#   用法：scripts/archive/run_w5_r010.sh [gui|headless] [run_id] [scenario]
 #     scenario: sim（默认，GUI 集成：真实节点故障注入）| node（独立进程：合成输入故障注入）
-#   子测见 scripts/w5_r010_check.py（sim：S1–S3；node：U1 + N0–N5）。
+#   子测见 tests/w5_r010_check.py（sim：S1–S3；node：U1 + N0–N5）。
 #   与 R-009 不同：本项**不**杀 ground_policy_rl（RL 即命令源，须由其驱动）。
 #   lifecycle bringup 偶发卡死 → 最多重试 3 次；node 场景不需 GZ，失败仅重试一次。
 # 注：清理**禁止** pkill -f "<名字>"（会匹配 shell 自身命令行 → 自杀）；用 "[x]xx" 写法规避。
@@ -55,7 +55,7 @@ cleanup() {
 }
 
 if [ "${SCENARIO}" = "node" ]; then
-  python3 "${ROOT}/scripts/w5_r010_check.py" --scenario node --run-id "${RUN_ID}"
+  python3 "${ROOT}/tests/w5_r010_check.py" --scenario node --run-id "${RUN_ID}"
   RC=$?
   [ "${RC}" -eq 0 ] && echo "r010 node PASS" || echo "r010 node FAIL (rc=${RC})"
   exit "${RC}"
@@ -70,7 +70,7 @@ for attempt in 1 2 3; do
   echo "launch up (mode=${MODE}, scenario=${SCENARIO}, attempt=${attempt}, pgid=${PGID}); 等待链路就绪 18 s ..."
   sleep 18
 
-  python3 "${ROOT}/scripts/w5_r010_check.py" --scenario sim --run-id "${RUN_ID}"
+  python3 "${ROOT}/tests/w5_r010_check.py" --scenario sim --run-id "${RUN_ID}"
   RC=$?
   cleanup
   trap - EXIT

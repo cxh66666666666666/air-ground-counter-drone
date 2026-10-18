@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r037 —— 评审 R-037（传感器/车体限制声明与能力标定）一键验收
-#   用法：scripts/run_w6_r037.sh [run_id]
-#   例：  scripts/run_w6_r037.sh 20261017-w6-r037-0
+#   用法：scripts/archive/run_w6_r037.sh [run_id]
+#   例：  scripts/archive/run_w6_r037.sh 20261017-w6-r037-0
 #
 # 阶段：
 #   Phase A **实跑** R-037 能力标定台架（w6_r037_bench.py）：起**最小 gz 场景**
@@ -25,7 +25,7 @@ OUT="${ROOT}/experiments/w6-task-eval/${RUN_ID}"
 mkdir -p "${OUT}/log" "${OUT}/metrics" "${OUT}/r037" "${OUT}/config"
 
 # world_bringup.launch.py 以 EnvironmentVariable 追加 GZ_SIM_SYSTEM_PLUGIN_PATH / GZ_SIM_RESOURCE_PATH，
-# 须先存在（照 scripts/run_w5_r009.sh）；显式导出 GZ 侧末端守门人插件库路径。
+# 须先存在（照 scripts/archive/run_w5_r009.sh）；显式导出 GZ 侧末端守门人插件库路径。
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${ROOT}/install/agc_sim/lib${GZ_SIM_SYSTEM_PLUGIN_PATH:+:${GZ_SIM_SYSTEM_PLUGIN_PATH}}"
 export GZ_SIM_RESOURCE_PATH="${GZ_SIM_RESOURCE_PATH:-}"
 
@@ -71,7 +71,7 @@ setsid "${ROOT}/install/agc_perception/lib/agc_perception/gt_bypass" --ros-args 
   > "${OUT}/log/gt_bypass.log" 2>&1 &
 sleep 3
 
-python3 "${ROOT}/scripts/w6_r037_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r037_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-a-bench.log" 2>&1
 echo "$?" > "${OUT}/r037/bench_rc.txt"
 echo "[Phase A] bench rc=$(cat "${OUT}/r037/bench_rc.txt")"
@@ -80,7 +80,7 @@ trap - EXIT
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → r037/check.json + metrics/r037.json"
-python3 "${ROOT}/scripts/w6_r037_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r037_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_B=${PIPESTATUS[0]}
 

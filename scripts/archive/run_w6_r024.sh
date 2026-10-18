@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # run_w6_r024 —— 评审 R-024（三类时间口径与 RTF 记录）一键验收
-#   用法：scripts/run_w6_r024.sh [headless|gui] [run_id]
-#   例：  scripts/run_w6_r024.sh headless 20261016-w6-r024-0
+#   用法：scripts/archive/run_w6_r024.sh [headless|gui] [run_id]
+#   例：  scripts/archive/run_w6_r024.sh headless 20261016-w6-r024-0
 #
 # **本脚本不起 launch（自包含）**，原因：
-#   * `scripts/w6_r024_check.py` 自己充当「假源 / reset 服务」桩环境，以 subprocess 直接起
+#   * `tests/w6_r024_check.py` 自己充当「假源 / reset 服务」桩环境，以 subprocess 直接起
 #     `install/agc_task/lib/agc_task/task_manager` + 临时参数文件（用例 a 传 `use_sim_time: True`
 #     并由 harness 自发 `/clock`），无需 gz / launch。
 #   `headless|gui` 参数仅保留以兼容统一 CLI 形态（本脚本不使用 gz）。
@@ -28,7 +28,7 @@ sleep 1
 RC=1
 for attempt in 1 2 3; do
   echo "r024 check (mode=${MODE}, run_id=${RUN_ID}, attempt=${attempt})"
-  python3 "${ROOT}/scripts/w6_r024_check.py" --run-id "${RUN_ID}" \
+  python3 "${ROOT}/tests/w6_r024_check.py" --run-id "${RUN_ID}" \
     2>&1 | tee "${OUT}/log/check-${attempt}.log"
   RC=${PIPESTATUS[0]}
   # 收尾：杀掉本用例残留进程（正常由 check 的 Popen 句柄 kill）

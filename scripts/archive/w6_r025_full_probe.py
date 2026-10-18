@@ -15,7 +15,7 @@
 **所有 bool 均为真实观测推导**；拿不到即如实标 false（`full_chain_executed` 亦然）。
 
 用法：
-  python3 scripts/w6_r025_full_probe.py --run-id 20261016-w6-r025-0 --scene s08_static_none_nominal_capture
+  python3 scripts/archive/w6_r025_full_probe.py --run-id 20261016-w6-r025-0 --scene s08_static_none_nominal_capture
 """
 
 import argparse

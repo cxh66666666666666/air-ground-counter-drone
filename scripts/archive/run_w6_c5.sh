@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_c5 —— W6-a R3/C5（相位复位触发）轻量验收：单独起 trajectory_tracker（无 PX4）+ 检查 + 清理
-#   用法：scripts/run_w6_c5.sh [run_id]
-#   例：  scripts/run_w6_c5.sh 20261014-w6-c5-0
+#   用法：scripts/archive/run_w6_c5.sh [run_id]
+#   例：  scripts/archive/run_w6_c5.sh 20261014-w6-c5-0
 #   说明：走**墙钟**（不设 use_sim_time），以保证相位随真实时间推进。
 set -o pipefail
 
@@ -28,7 +28,7 @@ cleanup() {
 trap cleanup EXIT
 
 sleep 2
-python3 "${ROOT}/scripts/w6_c5_check.py" --run-id "${RUN_ID}"
+python3 "${ROOT}/tests/w6_c5_check.py" --run-id "${RUN_ID}"
 RC=$?
 echo "w6 c5 check rc=${RC}"
 exit "${RC}"

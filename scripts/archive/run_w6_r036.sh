@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r036 —— 评审 R-036（C1 高度语义统一与同时间证据曲线）一键验收
-#   用法：scripts/run_w6_r036.sh [run_id]
-#   例：  scripts/run_w6_r036.sh 20261017-w6-r036-0
+#   用法：scripts/archive/run_w6_r036.sh [run_id]
+#   例：  scripts/archive/run_w6_r036.sh 20261017-w6-r036-0
 #
 # 阶段：
 #   Phase A **实跑** R-036 逻辑台架（w6_r036_bench.py）：起**真实** agc_air 生命周期节点
@@ -35,7 +35,7 @@ cleanup
 
 # ---------------- Phase A：实跑 R-036 逻辑台架 ----------------
 echo "[Phase A] R-036 逻辑台架（真实节点，5 曲线同轴）→ ${RUN_ID}/r036/bench.json"
-python3 "${ROOT}/scripts/w6_r036_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r036_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-a-bench.log" 2>&1
 echo "$?" > "${OUT}/r036/bench_rc.txt"
 echo "[Phase A] bench rc=$(cat "${OUT}/r036/bench_rc.txt")"
@@ -43,7 +43,7 @@ cleanup
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → r036/check.json + metrics/r036.json"
-python3 "${ROOT}/scripts/w6_r036_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r036_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_B=${PIPESTATUS[0]}
 

@@ -93,7 +93,7 @@ contact sensor（监测同 link 内 `base_collision`），由世界已加载的 
 
 ### (h) 验收脚本与产物
 
-新增 [`run_w6_r027.sh`](../../scripts/run_w6_r027.sh) + [`w6_r027_check.py`](../../scripts/w6_r027_check.py)：
+新增 [`run_w6_r027.sh`](../../scripts/archive/run_w6_r027.sh) + [`w6_r027_check.py`](../../tests/w6_r027_check.py)：
 Phase A 负对照（`s11` 车朝 `pole_1` 直行、安全层阈值外提前停车 → `collision_count==0`）；
 Phase B 正例（`agc_car` spawn 与 `pole_1` 几何重叠 → GZ 真实接触 → `collision_count>=1` 且 `other` 含 `pole`）；
 Phase C 核查 (a)…(f)。产物落 `experiments/w6-task-eval/<run_id>/{summaries,metrics/r027.json,log}`。

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # run_w6_r013 —— 评审 R-013（起始异步事务与新鲜门禁）一键验收（launch 背景 + 检查 + 清理）
-#   用法：scripts/run_w6_r013.sh [headless|gui] [run_id]
-#   例：  scripts/run_w6_r013.sh headless 20261016-w6-r013-0
+#   用法：scripts/archive/run_w6_r013.sh [headless|gui] [run_id]
+#   例：  scripts/archive/run_w6_r013.sh headless 20261016-w6-r013-0
 #   以轻量 W6 栈（agc_task w6.launch.py backend:=lightweight，无 PX4）起全链，再执行
-#   scripts/w6_r013_check.py（子测 a 正常通过 / b 复位后新鲜数据缺席被拒 / c 世界名不符被拒 /
+#   tests/w6_r013_check.py（子测 a 正常通过 / b 复位后新鲜数据缺席被拒 / c 世界名不符被拒 /
 #   d 时钟冻结被拒）。链路就绪偶发较慢 → 最多重试 3 次。
 # 注：清理**禁止** pkill -f "<名字>"（会匹配 shell 自身命令行 → 自杀）；用 "[x]xx" 写法规避。
 set -o pipefail
@@ -57,7 +57,7 @@ for attempt in 1 2 3; do
   echo "launch up (mode=${MODE}, run_id=${RUN_ID}, attempt=${attempt}, pgid=${PGID}); 等待链路就绪 20 s ..."
   sleep 20
 
-  python3 "${ROOT}/scripts/w6_r013_check.py" --run-id "${RUN_ID}" \
+  python3 "${ROOT}/tests/w6_r013_check.py" --run-id "${RUN_ID}" \
     2>&1 | tee "${OUT}/log/check-${attempt}.log"
   RC=${PIPESTATUS[0]}
   cleanup

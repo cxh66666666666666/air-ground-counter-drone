@@ -76,7 +76,7 @@ W6 spec `.trae/specs/w6-task-eval/tasks.md` 的 **Task 7.3** 声明「非法 spa
 
 ### (e) 验收脚本与产物
 
-新增 [`run_w6_r030.sh`](../../scripts/run_w6_r030.sh) + [`w6_r030_check.py`](../../scripts/w6_r030_check.py)：
+新增 [`run_w6_r030.sh`](../../scripts/archive/run_w6_r030.sh) + [`w6_r030_check.py`](../../tests/w6_r030_check.py)：
 起无头 `m0_skeleton`（注入 `w6_c9_resetfail.yaml` 参数与 `world_file`）→ **有界轮询** `/agc/task/start`
 就绪 → 调 `start`（预期被拒）→ 优雅停止（`SIGINT` 让 `run_logger` 写 summary）→ 拷 summary /
 config 至独立 run 目录 → 自检 a…h。产物落

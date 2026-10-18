@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r032 —— 评审 R-032（C10 冻结下游封闭）一键验收
-#   用法：scripts/run_w6_r032.sh [run_id]
-#   例：  scripts/run_w6_r032.sh 20261017-r032-0
+#   用法：scripts/archive/run_w6_r032.sh [run_id]
+#   例：  scripts/archive/run_w6_r032.sh 20261017-r032-0
 #
 # 阶段：
 #   Phase A **实跑** R-032 逻辑台架（w6_r032_bench.py）：起真实 trajectory_tracker（configure/activate）
@@ -34,7 +34,7 @@ cleanup
 
 # ---------------- Phase A：实跑 R-032 逻辑台架 ----------------
 echo "[Phase A] R-032 逻辑台架（trajectory_tracker）→ ${RUN_ID}/r032/bench.json"
-python3 "${ROOT}/scripts/w6_r032_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r032_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-a-bench.log" 2>&1
 echo "$?" > "${OUT}/r032/bench_rc.txt"
 echo "[Phase A] bench rc=$(cat "${OUT}/r032/bench_rc.txt")"
@@ -42,7 +42,7 @@ cleanup
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → metrics/r032.json"
-python3 "${ROOT}/scripts/w6_r032_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r032_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_B=${PIPESTATUS[0]}
 

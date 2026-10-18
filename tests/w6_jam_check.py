@@ -9,7 +9,7 @@
 PX4 侧响应（`nav_state 14→18`）已由前置 P 实跑；本条补"包络门控 + 命令发射"路径。
 
 用法（capture_adjudicator + jammer 已在运行）：
-  python3 scripts/w6_jam_check.py --run-id 20261014-w6-jam-0
+  python3 tests/w6_jam_check.py --run-id 20261014-w6-jam-0
 """
 
 import argparse

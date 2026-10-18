@@ -17,7 +17,7 @@ W3 的 C1 恒速验收把**参考 / 机体估计 / 世界真值**三个指标混
   接管处 `z_offset_ = state.pos.z() - trajectory_->sample(0.0).pos.z()`），而**对外公开的 `base_ref` 未加
   `z_offset_`**（原 `ref_pub_->publish(toMsg(base_ref, ...))`）→ 对外 `base_ref` 与生效 `effective`
   （`effective.pos.z() += z_offset_`）**高度基准静默不同**；
-- 既有 C1 检查（[`w3_c10_check.py`](../../scripts/w3_c10_check.py)）采用 **warmup 之后的速度误差 P95**，
+- 既有 C1 检查（[`w3_c10_check.py`](../../tests/w3_c10_check.py)）采用 **warmup 之后的速度误差 P95**，
   **不能推出全程最大误差**；
 - 「恒速无加减速」若指**零向量加速度**则与曲线运动不相容（见 [X-01](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-01)）；
 - **stock 原始 CSV**（`/tmp/stock_rec{,2,3}.csv`，见 [W3 tasks](../../.trae/specs/w3-air-link/tasks.md)）
@@ -56,13 +56,13 @@ W3 的 C1 恒速验收把**参考 / 机体估计 / 世界真值**三个指标混
   的周期轨迹按**弧长参数化**（先建 `s(θ)` 梯形积分表，再对给定 `s` 反解 θ），使 `|dp/dt| ≡ speed`；
   `Figure8Trajectory` Gerono `x=cx+rx·sinθ, y=cy+ry·sinθcosθ, z=height` → 「**参考恒速的对象 = 弧长参数化的
   切向速度**」（这是 C1「恒速」所指对象）。
-- [`w3_c10_check.py`](../../scripts/w3_c10_check.py)：采归一化 `/agc/air/odom` / `/agc/targets` /
+- [`w3_c10_check.py`](../../tests/w3_c10_check.py)：采归一化 `/agc/air/odom` / `/agc/targets` /
   `/agc/air/tracking_ref`；**阈值一律从 `air.yaml` 读取（不复制参数）**；判据用 **warmup 之后**的误差
   **P95**（跟踪误差 |drone−tracking_ref| 均值/P95/max）。
 - **世界真值旁路**：[`gt_bypass.cpp`](../../src/agc_perception/src/gt_bypass.cpp) 按实体发 `/agc/gt/<entity>`
   （`geometry_msgs/PoseStamped`，world 系），但 `entities` 仅 `["agc_car","intruder_uav"]` —— **无己方无人机 GT**；
   W3 既有做法是**直接采 gz `/world/agc_world/pose/info`**（[W3 tasks](../../.trae/specs/w3-air-link/tasks.md)）。
-- 验收脚本惯例：[`run_w6_r034.sh`](../../scripts/run_w6_r034.sh) / [`run_w6_r035.sh`](../../scripts/run_w6_r035.sh)
+- 验收脚本惯例：[`run_w6_r034.sh`](../../scripts/archive/run_w6_r034.sh) / [`run_w6_r035.sh`](../../scripts/archive/run_w6_r035.sh)
   （`source /opt/ros/jazzy` + `install/setup.bash` + `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`；`pgrep -f "…[y]"`
   取 PID kill；`start_new_session`+`killpg`+`wait`；**无** `rm -rf`、**无**裸名 `pkill`）。
 

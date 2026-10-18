@@ -11,7 +11,7 @@
   结果落 `experiments/w5-ground-nav-safety/<run_id>/metrics/safety.json`（ADR-0007）。
 
 用法：
-  python3 scripts/w5_safety_check.py --duration 30 --run-id <YYYYMMDD>-pole-approach-0
+  python3 tests/w5_safety_check.py --duration 30 --run-id <YYYYMMDD>-pole-approach-0
 """
 
 import argparse

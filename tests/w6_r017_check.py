@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """w6_r017_check —— 评审 R-017（干扰单一授权与已校验事件）自包含 ROS 级验收 harness。
 
-结构拷贝自 `scripts/w6_r016_check.py`。轻量栈 `w6.launch.py backend:=lightweight` **不启动** `intruder_driver`，
+结构拷贝自 `tests/w6_r016_check.py`。轻量栈 `w6.launch.py backend:=lightweight` **不启动** `intruder_driver`，
 且其自带 `scenario_reset` 会发 epoch 干扰；故本 check **自包含，无需起 launch**：自己充当「假 PX4」。
 
 假 PX4（本节点）：

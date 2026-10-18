@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w6_scene —— W6 R5 场景族：按 scene id 起 w6.launch.py backend:=lightweight 并校验期望终态
-#   用法：scripts/run_w6_scene.sh <scene_id> <expect_terminal> [expect_reason] [headless|gui]
-#   例：  scripts/run_w6_scene.sh s01_static_none_nominal_track TRACKING_SUCCESS
-#         scripts/run_w6_scene.sh s10_maneuver_none_fov_timeout MISSION_FAILED TIMEOUT
+#   用法：scripts/archive/run_w6_scene.sh <scene_id> <expect_terminal> [expect_reason] [headless|gui]
+#   例：  scripts/archive/run_w6_scene.sh s01_static_none_nominal_track TRACKING_SUCCESS
+#         scripts/archive/run_w6_scene.sh s10_maneuver_none_fov_timeout MISSION_FAILED TIMEOUT
 set -o pipefail
 
 ROOT=/home/chen/AGC
@@ -42,7 +42,7 @@ echo "launch up (scene=${SCENE}, run_id=${RUN_ID}); 等待链路就绪 18 s ..."
 sleep 18
 EXTRA=""
 if [ -n "${EXPECT_REASON}" ]; then EXTRA="--expect-reason ${EXPECT_REASON}"; fi
-python3 "${ROOT}/scripts/w6_fsm_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_fsm_check.py" --run-id "${RUN_ID}" \
   --expect-terminal "${EXPECT_TERMINAL}" ${EXTRA}
 RC=$?
 echo "w6 scene[${SCENE}] rc=${RC}"

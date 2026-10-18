@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """w6_r021_check —— 评审 R-021（捕获跨回合污染）自包含 ROS 级验收 harness。
 
-结构拷贝自 `scripts/w6_r020_check.py`（自包含：不起 launch，自己充当「假源」桩环境，以
+结构拷贝自 `tests/w6_r020_check.py`（自包含：不起 launch，自己充当「假源」桩环境，以
 subprocess 直接起 `install/agc_task/lib/agc_task/{capture_adjudicator, task_manager}` + 临时参数
 文件，`use_sim_time: False`，墙钟，规避无 `/clock` 时间冻结）；task_manager 驱动结构参考
-`scripts/w6_r013_check.py` / `w6_r015_check.py`（假 reset 服务 + 假门禁数据）。
+`tests/w6_r013_check.py` / `w6_r015_check.py`（假 reset 服务 + 假门禁数据）。
 
 假源（本 harness 节点）：
   * 发布 `/agc/ground/odom`、`/agc/targets`（`confidence` / `target_id` 可控）、

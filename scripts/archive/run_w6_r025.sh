@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r025 —— 评审 R-025（整链覆盖矩阵 + 同一 run 因果记录 + pass 命题化）一键验收
-#   用法：scripts/run_w6_r025.sh [headless|gui] [run_id]
-#   例：  scripts/run_w6_r025.sh headless 20261016-w6-r025-0
+#   用法：scripts/archive/run_w6_r025.sh [headless|gui] [run_id]
+#   例：  scripts/archive/run_w6_r025.sh headless 20261016-w6-r025-0
 #
 # 三阶段：
 #   Phase A 轻量 campaign：episode_runner.py --run-id <RUN_ID>/lightweight
@@ -96,7 +96,7 @@ for attempt in 1 2 3; do
   LAUNCH_PGID=$!
   echo "[Phase B] 等待双 PX4 + 驱动就绪 ~55 s ..."
   sleep 55
-  python3 "${ROOT}/scripts/w6_r025_full_probe.py" --run-id "${RUN_ID}" --scene "${SCENE}" \
+  python3 "${ROOT}/scripts/archive/w6_r025_full_probe.py" --run-id "${RUN_ID}" --scene "${SCENE}" \
     --mode "${MODE}" 2>&1 | tee "${OUT}/log/probe-attempt-${attempt}.log"
   RC_P=${PIPESTATUS[0]}
   # 每次产物如实留档
@@ -125,7 +125,7 @@ fi
 
 # ---------------- Phase C：自包含核查 ----------------
 echo "[Phase C] 覆盖矩阵 / 因果记录核查 → metrics/r025.json"
-python3 "${ROOT}/scripts/w6_r025_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r025_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-c-check.log"
 RC_C=${PIPESTATUS[0]}
 

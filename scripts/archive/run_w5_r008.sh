@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w5_r008 —— W5 R-008 失源失效停车故障注入一键跑（launch 背景 + 杀 RL 命令源 + 脚本化命令源检查 + 清理）
-#   用法：scripts/run_w5_r008.sh [headless|gui] [run_id]
-#   子测（另见 scripts/w5_r008_check.py）：A 正常参照停车 / B scan 失源盲行停车 / C TF 失源停车。
+#   用法：scripts/archive/run_w5_r008.sh [headless|gui] [run_id]
+#   子测（另见 tests/w5_r008_check.py）：A 正常参照停车 / B scan 失源盲行停车 / C TF 失源停车。
 #   lifecycle bringup 偶发卡死（costmap change_state 超时）→ 最多重试 3 次。
 # 注：清理**禁止** pkill -f "<名字>"（会匹配 shell 自身命令行 → 自杀）；用 "[x]xx" 写法规避。
 set -o pipefail
@@ -63,7 +63,7 @@ for attempt in 1 2 3; do
   pkill -TERM -f "[g]round_policy_rl" 2>/dev/null
   sleep 2
 
-  python3 "${ROOT}/scripts/w5_r008_check.py" --run-id "${RUN_ID}" --mode "${MODE}"
+  python3 "${ROOT}/tests/w5_r008_check.py" --run-id "${RUN_ID}" --mode "${MODE}"
   RC=$?
   cleanup
   trap - EXIT

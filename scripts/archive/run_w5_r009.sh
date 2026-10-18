@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w5_r009 —— W5 R-009 执行中继 + GZ 末端失效停车一键跑
-#   用法：scripts/run_w5_r009.sh [gui|headless] [run_id] [scenario]
+#   用法：scripts/archive/run_w5_r009.sh [gui|headless] [run_id] [scenario]
 #     scenario: sim（默认，集成验收 K1/K2/K3）| evidence（机制落地前的动态取证，只记事实）
-#   子测见 scripts/w5_r009_check.py（S1–S6 见 relay 场景；K1/K2/K3 见 sim 场景）。
+#   子测见 tests/w5_r009_check.py（S1–S6 见 relay 场景；K1/K2/K3 见 sim 场景）。
 #   lifecycle bringup 偶发卡死（costmap/collision_monitor change_state 超时）→ 最多重试 3 次。
 # 注：清理**禁止** pkill -f "<名字>"（会匹配 shell 自身命令行 → 自杀）；用 "[x]xx" 写法规避。
 set -o pipefail
@@ -69,7 +69,7 @@ for attempt in 1 2 3; do
   pkill -TERM -f "[g]round_policy_rl" 2>/dev/null
   sleep 2
 
-  python3 "${ROOT}/scripts/w5_r009_check.py" --scenario "${SCENARIO}" \
+  python3 "${ROOT}/tests/w5_r009_check.py" --scenario "${SCENARIO}" \
     --run-id "${RUN_ID}"
   RC=$?
   cleanup

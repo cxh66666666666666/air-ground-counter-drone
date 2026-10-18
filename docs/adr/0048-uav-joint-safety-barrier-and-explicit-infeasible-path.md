@@ -108,10 +108,10 @@ QP / CBF（列为后续更优路线）。
 
 ### (g) 验收（实跑逻辑台架 + 自包含核查）
 
-新增 [`run_w6_r033.sh`](../../scripts/run_w6_r033.sh) + [`w6_r033_bench.py`](../../scripts/w6_r033_bench.py)
+新增 [`run_w6_r033.sh`](../../scripts/archive/run_w6_r033.sh) + [`w6_r033_bench.py`](../../scripts/archive/w6_r033_bench.py)
 （Phase A **实跑**真实 `trajectory_tracker`，`safety.enabled=true` + **每场景专用**静态障碍 / 目标几何参数，
 合成驱动发布 odom / active_controller / tracking_ref / targets，订阅 `/fmu/in/trajectory_setpoint`
-重建**修正后有效参考** + `/agc/air/tracking_status`）+ [`w6_r033_check.py`](../../scripts/w6_r033_check.py)
+重建**修正后有效参考** + `/agc/air/tracking_status`）+ [`w6_r033_check.py`](../../tests/w6_r033_check.py)
 （读台架证据 + 静态核查）。四场景：
 
 - **a 两障碍交叠**（`:62` 后投影落回前约束的复现）：障碍 (0,0)/(10,0)、修正半径 5.2 → 交叠；

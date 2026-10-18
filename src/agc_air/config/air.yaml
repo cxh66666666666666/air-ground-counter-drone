@@ -70,7 +70,7 @@ trajectory_tracker:
     #   唯一世界高度语义 = 世界 **ENU z**（`world` frame，向上）；对外 base_ref 发布带 `z_offset_`
     #   （层高基准 = 接管时刻机体高度 − 轨迹 h），与生效 effective **同一高度基准**（发布前加同一 offset，
     #   见 trajectory_tracker.cpp ⑦）；`publishTrackStatus` 追加 `z_offset` / `height_datum` 使差异**可辨**。
-    #   下列 `c1.*` 为 C1 验收容限，由脚本 `scripts/w6_r036_check.py` **读取**（不复制参数）：
+    #   下列 `c1.*` 为 C1 验收容限，由脚本 `tests/w6_r036_check.py` **读取**（不复制参数）：
     #     ref_speed_target        —— 参考恒速目标 |v|（m/s，弧长参数化）；
     #     ref_speed_tol           —— 参考 |v| 相对目标的 max 数值容限（m/s）；
     #     height_datum_tol_m      —— 对外 base_ref 与 effective 高度基准一致容限（z 差，m）；

@@ -4,7 +4,7 @@
 起 `agc_ground/scan_self_filter` 节点，喂合成 LaserScan（含"车体区自返回" + "外部障碍返回"），
 断言：车体矩形内返回被置 +inf（自滤）、外部障碍返回与 header 原样保留。
 
-用法：python3 scripts/w5_scan_self_filter_check.py [--run-id ...]
+用法：python3 tests/w5_scan_self_filter_check.py [--run-id ...]
 """
 
 import argparse

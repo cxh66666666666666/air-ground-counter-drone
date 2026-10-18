@@ -82,10 +82,10 @@ accepted
 
 ### (f) 验收脚本与产物
 
-新增 [`w6_r028_harness.py`](../../scripts/w6_r028_harness.py)（确定性合成 harness，只用
+新增 [`w6_r028_harness.py`](../../scripts/archive/w6_r028_harness.py)（确定性合成 harness，只用
 `/clock` / `odom` / `scan` / `/collision_monitor_state` / `/agc/task/state`，**不发布**
-`/agc/ground/cmd_vel`）、[`run_w6_r028.sh`](../../scripts/run_w6_r028.sh) 与
-[`w6_r028_check.py`](../../scripts/w6_r028_check.py)。产物落
+`/agc/ground/cmd_vel`）、[`run_w6_r028.sh`](../../scripts/archive/run_w6_r028.sh) 与
+[`w6_r028_check.py`](../../tests/w6_r028_check.py)。产物落
 `experiments/w6-task-eval/<run_id>/{summaries,metrics/r028.json,log}`。
 
 ## 备选

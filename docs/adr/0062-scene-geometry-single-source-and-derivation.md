@@ -18,7 +18,7 @@ accepted
 4. **边界（standalone 回退）**：[`obstacles.yaml`](../../src/agc_perception/config/obstacles.yaml) / `obstacles_none.yaml` / [`map.yaml`](../../src/agc_perception/config/map.yaml) **保留**为 standalone（不经 composition 的 `perception_bringup` / `air_bringup`）回退副本，文件头注明「几何真源 = `world_geometry.yaml`，本文件须与其一致」；standalone `air_bringup` 亦由真源注入空中安全几何。回退副本由检查器保一致（未决：长期或统一改派生）。
 5. **几何版本身份**：`geometry_sha256`（真源文件**字节** sha256）+ 真源路径记入 `scene_manifest`（manifest `geometry` 块：`source` / `sha256` / `work_area` / 障碍 `id/pose/size`）。`assertions()` 增「派生几何 == 真源」断言——不符即**拒绝运行**。
 6. **权限成文**：真源为**物理 / 真值**事实，**不等于**「所有算法都可读真值」；感知静态先验仍受 [ADR-0020](./0020-perception-as-truth-derived-simulation.md) 成文约束（不受空观测清除）。
-7. **验收**：新增 [`scripts/w6_geometry_check.py`](../../scripts/w6_geometry_check.py)（只读）——①真源 schema；②`static` 世界 pole == 真源、`none` 世界无 pole；③回退副本与真源一致；④`air.yaml` 无硬编码障碍几何；⑤`w6_base.yaml` 去硬编码且 compose 派生 == 真源；⑥`geometry_sha256` 稳定 + manifest `geometry` 块 == 真源；⑦静态先验成文假设仍在。
+7. **验收**：新增 [`scripts/w6_geometry_check.py`](../../tests/w6_geometry_check.py)（只读）——①真源 schema；②`static` 世界 pole == 真源、`none` 世界无 pole；③回退副本与真源一致；④`air.yaml` 无硬编码障碍几何；⑤`w6_base.yaml` 去硬编码且 compose 派生 == 真源；⑥`geometry_sha256` 稳定 + manifest `geometry` 块 == 真源；⑦静态先验成文假设仍在。
 
 ## Considered Options
 

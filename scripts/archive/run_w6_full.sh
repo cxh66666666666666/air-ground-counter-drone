@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_w6_full —— W6 双 PX4 整链一键验收（launch w6.launch.py backend:=full + 机身层检查 + 清理）
-#   用法：scripts/run_w6_full.sh <scene> <motion> <run_id> [--jam]
-#   例：  scripts/run_w6_full.sh s02_linear_none_nominal_track linear 20261014-w6-full-s02
-#         scripts/run_w6_full.sh s03_maneuver_none_nominal_track maneuver 20261014-w6-full-s03
+#   用法：scripts/archive/run_w6_full.sh <scene> <motion> <run_id> [--jam]
+#   例：  scripts/archive/run_w6_full.sh s02_linear_none_nominal_track linear 20261014-w6-full-s02
+#         scripts/archive/run_w6_full.sh s03_maneuver_none_nominal_track maneuver 20261014-w6-full-s03
 set -o pipefail
 
 ROOT=/home/chen/AGC
@@ -40,7 +40,7 @@ echo "launch up (scene=${SCENE}, run_id=${RUN_ID}); 等待双 PX4 + 驱动就绪
 sleep 55
 EXTRA=""
 if [ "${JAMFLAG}" = "--jam" ]; then EXTRA="--jam"; fi
-python3 "${ROOT}/scripts/w6_full_check.py" --motion "${MOTION}" --duration 8 \
+python3 "${ROOT}/tests/w6_full_check.py" --motion "${MOTION}" --duration 8 \
   --run-id "${RUN_ID}" ${EXTRA}
 RC=$?
 echo "w6 full[${SCENE}] rc=${RC}"

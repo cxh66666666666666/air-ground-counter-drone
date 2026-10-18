@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_m0 —— M0 最小端到端闭环入口（唯一跑法）
-#   用法：scripts/run_m0.sh [launch args...]
-#   例：  scripts/run_m0.sh                       # GUI
-#         scripts/run_m0.sh gz_args:="-s -r -v 3 <world>"   # 无头
+#   用法：scripts/archive/run_m0.sh [launch args...]
+#   例：  scripts/archive/run_m0.sh                       # GUI
+#         scripts/archive/run_m0.sh gz_args:="-s -r -v 3 <world>"   # 无头
 set -euo pipefail
 
 ROOT=/home/chen/AGC

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run_w6_jam —— W6 R8 干扰链（作用包络门控 + 命令输出）轻量验收（无 PX4）
-#   用法：scripts/run_w6_jam.sh [run_id]
+#   用法：scripts/archive/run_w6_jam.sh [run_id]
 set -o pipefail
 ROOT=/home/chen/AGC
 source /opt/ros/jazzy/setup.bash
@@ -23,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 sleep 3
-python3 "${ROOT}/scripts/w6_jam_check.py" --run-id "${RUN_ID}"
+python3 "${ROOT}/tests/w6_jam_check.py" --run-id "${RUN_ID}"
 RC=$?
 echo "w6 jam check rc=${RC}"
 exit "${RC}"

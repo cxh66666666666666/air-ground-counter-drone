@@ -2,7 +2,7 @@
 #
 # ---- 几何真源（S-06；ADR-0062）----
 # 作业区几何的唯一真源为 `agc_sim/config/world_geometry.yaml` 的 `work_area`。本文件是
-# **standalone 回退副本**，**须与真源一致**（由 `scripts/w6_geometry_check.py` 校验）。
+# **standalone 回退副本**，**须与真源一致**（由 `tests/w6_geometry_check.py` 校验）。
 # w6 运行路径的地图几何由真源**派生生成**（`w6_composition.write_derived_map`），不读本副本。
 #
 # 对齐旧树行为：旧 map_adapter 由场景文件的 map 段取几何。W4 收敛到本文件。

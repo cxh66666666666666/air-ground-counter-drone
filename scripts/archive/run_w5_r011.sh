@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w5_r011 —— W5 R-011 动作方向闭环 + C6 逃逸能力标定一键跑（launch 背景 + 杀 RL 命令源 + 脚本化命令源验收 + 清理）
-#   用法：scripts/run_w5_r011.sh [gui|headless] [run_id]
-#   子测（另见 scripts/w5_r011_check.py）：D 方向闭环（left→左 / right→右）、E C6 逃逸标定（T 内横向可达）。
+#   用法：scripts/archive/run_w5_r011.sh [gui|headless] [run_id]
+#   子测（另见 tests/w5_r011_check.py）：D 方向闭环（left→左 / right→右）、E C6 逃逸标定（T 内横向可达）。
 #   与 R-008/R-010 同法：本脚本作"脚本化命令源"直接发 /agc/ground/cmd_vel_raw，故杀掉 RL 命令源避免争抢。
 #   lifecycle bringup 偶发卡死（costmap change_state 超时）→ 最多重试 3 次。
 # 注：清理**禁止** pkill -f "<名字>"（会匹配 shell 自身命令行 → 自杀）；用 "[x]xx" 写法规避。
@@ -65,7 +65,7 @@ for attempt in 1 2 3; do
   pkill -TERM -f "[g]round_policy_rl" 2>/dev/null
   sleep 2
 
-  python3 "${ROOT}/scripts/w5_r011_check.py" --run-id "${RUN_ID}" --mode "${MODE}" \
+  python3 "${ROOT}/tests/w5_r011_check.py" --run-id "${RUN_ID}" --mode "${MODE}" \
     2>&1 | tee "${OUT}/log/check-${attempt}.log"
   RC=${PIPESTATUS[0]}
   cleanup

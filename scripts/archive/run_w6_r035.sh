@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r035 —— 评审 R-035（空中控制唯一权威与控制许可）一键验收
-#   用法：scripts/run_w6_r035.sh [run_id]
-#   例：  scripts/run_w6_r035.sh 20261017-w6-r035-0
+#   用法：scripts/archive/run_w6_r035.sh [run_id]
+#   例：  scripts/archive/run_w6_r035.sh 20261017-w6-r035-0
 #
 # 阶段：
 #   Phase A **实跑** R-035 逻辑台架（w6_r035_bench.py）：起**真实** agc_air 生命周期节点
@@ -43,7 +43,7 @@ cleanup
 
 # ---------------- Phase A：实跑 R-035 逻辑台架 ----------------
 echo "[Phase A] R-035 逻辑台架（真实节点 + Nav2 lifecycle_manager）→ ${RUN_ID}/r035/bench.json"
-python3 "${ROOT}/scripts/w6_r035_bench.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/scripts/archive/w6_r035_bench.py" --run-id "${RUN_ID}" \
   > "${OUT}/log/phase-a-bench.log" 2>&1
 echo "$?" > "${OUT}/r035/bench_rc.txt"
 echo "[Phase A] bench rc=$(cat "${OUT}/r035/bench_rc.txt")"
@@ -51,7 +51,7 @@ cleanup
 
 # ---------------- Phase B：自包含核查 ----------------
 echo "[Phase B] 核查 → r035/check.json + metrics/r035.json"
-python3 "${ROOT}/scripts/w6_r035_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r035_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/phase-b-check.log"
 RC_B=${PIPESTATUS[0]}
 

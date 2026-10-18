@@ -77,7 +77,7 @@ summary 增 `episode_id` 键。初值 `config/episode_id.txt` = `-1`；summary �
 
 ### (f) 验收脚本与产物
 
-新增 [`run_w6_r029.sh`](../../scripts/run_w6_r029.sh) + [`w6_r029_check.py`](../../scripts/w6_r029_check.py)：
+新增 [`run_w6_r029.sh`](../../scripts/archive/run_w6_r029.sh) + [`w6_r029_check.py`](../../tests/w6_r029_check.py)：
 Phase A 唯一不覆盖（同场景同 seed 连跑两次 → 两个不同 run 目录）；Phase B 拒写已有目录（预建目录 +
 哨兵 → rc=2 且哨兵**逐字节不变**）；Phase C `episode_id` 贯穿；Phase D 身份齐备；Phase E runner 同一
 run 关联；Phase F 核查 (a)…(f)。产物落 `experiments/w6-task-eval/<run_id>/{dup,reject,episode,identity,runner,metrics/r029.json,log}`。

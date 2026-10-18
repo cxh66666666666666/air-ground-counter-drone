@@ -5,7 +5,7 @@
 # 注入）。节点不得覆写（契约 [参数入口] ../../docs/ROS2迁移交接文档.md#params）。
 #
 # 纪律：
-#   * 修改几何**只改本文件**；各域随之派生（`scripts/w6_geometry_check.py` 可复核）。
+#   * 修改几何**只改本文件**；各域随之派生（`tests/w6_geometry_check.py` 可复核）。
 #   * 本真源为**物理 / 真值**事实——**不等于**「所有算法都可读真值」；感知静态先验仍受
 #     ADR-0020 成文假设约束（见 agc_perception/config/obstacles.yaml 头部）。
 #   * `color` 仅保视觉保真，**非几何**。

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_w6_r030 —— 评审 R-030（resetfail 证据矛盾登记与唯一新 run 重做）一键验收
-#   用法：scripts/run_w6_r030.sh [run_id]
-#   例：  scripts/run_w6_r030.sh 20261016-r030-0
+#   用法：scripts/archive/run_w6_r030.sh [run_id]
+#   例：  scripts/archive/run_w6_r030.sh 20261016-r030-0
 #
 # 背景：旧原件 experiments/w6-task-eval/20261014-c9-resetfail-0 已于 2026-10-16 因误删永久丢失
 #   （不可恢复，见 docs/adr/0045-*.md）。本脚本**不**重建旧原件，改为在**唯一新 run**（R-029 不可
@@ -112,7 +112,7 @@ fi
 
 # ---------------- Phase 4：自包含核查 ----------------
 echo "[Phase 4] 核查 → metrics/r030.json"
-python3 "${ROOT}/scripts/w6_r030_check.py" --run-id "${RUN_ID}" \
+python3 "${ROOT}/tests/w6_r030_check.py" --run-id "${RUN_ID}" \
   2>&1 | tee "${OUT}/log/check.log"
 RC_C=${PIPESTATUS[0]}
 
