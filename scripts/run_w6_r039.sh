@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# run_w6_r039 —— 评审 R-039（地面 odom 源时刻分离 + 复位 epoch 速度历史）一键验收
+#   用法：scripts/run_w6_r039.sh [run_id]
+#   例：  scripts/run_w6_r039.sh 20261018-w6-r039-0
+#
+# 阶段：
+#   Phase A **实跑**节点行为台架（w6_r039_bench.py，真实 ground_odom_adapter 二进制 + 合成真值 / epoch）：
+#           断源 / 旧样本 / teleport / time jump → <RUN_ID>/r039/bench.json
+#   Phase B 自包含核查（w6_r039_check.py）→ <RUN_ID>/r039/check.json（+ metrics/r039.json）
+#
+# 注：清理**禁止** `rm -rf` 与裸名 `pkill`（会匹配自身命令行 → 自杀）；用 `pgrep -f "名[x]"` 写法定位。
+set -o pipefail
+
+ROOT=/home/chen/AGC
+source /opt/ros/jazzy/setup.bash
+source "${ROOT}/install/setup.bash"
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+
+RUN_ID="${1:-20261018-w6-r039-0}"
+OUT="${ROOT}/experiments/w6-task-eval/${RUN_ID}"
+mkdir -p "${OUT}/log" "${OUT}/metrics" "${OUT}/r039"
+
+cleanup() {
+  # [x] 写法 + 完整安装路径：仅命中本台架真实二进制进程，不误杀其它会话 / 自身。
+  for pat in "install/agc_perception/lib/agc_perception/ground_odom_adapte[r]"; do
+    for p in $(pgrep -f "${pat}" 2>/dev/null); do
+      kill -9 "${p}" 2>/dev/null
+    done
+  done
+}
+trap 'cleanup' EXIT
+cleanup
+
+# ---------------- Phase A：节点行为台架（真实二进制） ----------------
+echo "[Phase A] 台架（真实二进制）→ ${RUN_ID}/r039/bench.json"
+python3 "${ROOT}/scripts/w6_r039_bench.py" --run-id "${RUN_ID}" \
+  > "${OUT}/log/phase-a-bench.log" 2>&1
+echo "$?" > "${OUT}/r039/bench_rc.txt"
+echo "[Phase A] bench rc=$(cat "${OUT}/r039/bench_rc.txt")"
+cleanup
+
+# ---------------- Phase B：自包含核查 ----------------
+echo "[Phase B] 核查 → r039/check.json + metrics/r039.json"
+python3 "${ROOT}/scripts/w6_r039_check.py" --run-id "${RUN_ID}" \
+  2>&1 | tee "${OUT}/log/phase-b-check.log"
+RC_C=${PIPESTATUS[0]}
+
+if [ "${RC_C}" -eq 0 ]; then echo "r039 check PASS (overall_pass=true)"; else echo "r039 check FAIL (overall_pass=false)"; fi
+echo "产物：${RUN_ID}/{r039/,metrics/r039.json,log/,config/}"
+exit "${RC_C}"

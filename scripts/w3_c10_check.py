@@ -2,7 +2,8 @@
 """w3_c10_check —— W3 C10 联调录制与判据（spec R6/R7，契约 #hard-constraints C10）
 
 订阅归一化 `/agc/air/odom`、`/agc/targets`、`/agc/air/tracking_ref`、`/agc/air/control_conflict`，
-按**相位**录制并联立判据（阈值一律从 `--params`（`config/air.yaml`）读取，不复制参数）：
+按**相位**录制并联立判据（阈值一律从 `--params`（`config/air.yaml`）读取，不复制参数；
+静态障碍**几何**从单一真源 `agc_sim/config/world_geometry.yaml` 读取，见 S-06 / ADR-0062）：
 
   | 相位     | 判据                                                              |
   |----------|-------------------------------------------------------------------|
@@ -38,19 +39,41 @@ LATCHED = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
                      durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 
-def load_air_params(path: str) -> dict:
-    """从参数唯一来源 air.yaml 取阈值（不复制）"""
+def load_air_params(path: str, geometry_path: str) -> dict:
+    """阈值从 air.yaml 读（不复制）；静态障碍**几何**从单一真源 world_geometry.yaml 读
+    （S-06 / ADR-0062：几何已上移，air.yaml 不再硬编码障碍坐标）。"""
     with open(path) as f:
         doc = yaml.safe_load(f)
     follower = doc['standoff_follower']['ros__parameters']
     safety = doc['trajectory_tracker']['ros__parameters']['safety']
+    with open(geometry_path) as f:
+        geom = yaml.safe_load(f)
+    radii = list(safety['obstacle_safety_radius'])
+    poles = [(o['id'], float(o['x']), float(o['y']), float(radii[i]))
+             for i, o in enumerate(geom['obstacles'])]
     return {
         'safe_min': float(follower['safe_min']),
         'safe_max': float(follower['safe_max']),
         'ref_max_age_s': float(follower['ref_max_age_s']),
-        'poles': list(zip(safety['obstacle_names'], safety['obstacle_x'],
-                          safety['obstacle_y'], safety['obstacle_safety_radius'])),
+        'poles': poles,
     }
+
+
+def _body_to_world(q, v):
+    """机体系 FLU → 世界 ENU（R-003）：`/agc/air/odom` 的 twist 在 child frame（机体系），
+    而本 CSV 口径为世界 ENU，故用姿态四元数旋转回去（v' = R(q)·v）。"""
+    qx, qy, qz, qw = q.x, q.y, q.z, q.w
+
+    def cross(a, b):
+        return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+    qv = (qx, qy, qz)
+    vi = (v.x, v.y, v.z)
+    t = cross(qv, vi)
+    t2 = cross(qv, t)
+    out = type(v)()
+    out.x, out.y, out.z = (vi[k] + 2.0 * (qw * t[k] + t2[k]) for k in range(3))
+    return out
 
 
 class C10Checker(Node):
@@ -101,7 +124,7 @@ class C10Checker(Node):
         if self.t0 is None:
             self.t0 = t
         p = msg.pose.pose.position
-        v = msg.twist.twist.linear
+        v = _body_to_world(msg.pose.pose.orientation, msg.twist.twist.linear)
         self.drone = (p.x, p.y, p.z)
         tgt_age = (t - self.target_t) if self.target_t is not None else float('inf')
         ref_gap = (t - self.ref_t) if self.ref_t is not None else float('inf')
@@ -180,6 +203,8 @@ def main() -> None:
     ap.add_argument('--phase', choices=['circle', 'pole', 'freeze'], required=True)
     ap.add_argument('--params', default='src/agc_air/config/air.yaml',
                     help='参数唯一来源（阈值从此读，不复制）')
+    ap.add_argument('--geometry', default='src/agc_sim/config/world_geometry.yaml',
+                    help='静态障碍几何单一真源（S-06 / ADR-0062；障碍坐标从此读，不复制）')
     ap.add_argument('--prefix', default='/agc/air')
     ap.add_argument('--duration', type=float, default=60.0)
     ap.add_argument('--warmup', type=float, default=3.0)
@@ -191,7 +216,7 @@ def main() -> None:
     ap.add_argument('--hold-eps', type=float, default=0.50, help='freeze 允许末端位移 m')
     args = ap.parse_args()
 
-    cfg = load_air_params(args.params)
+    cfg = load_air_params(args.params, args.geometry)
     print(f'阈值来源 {args.params}: safe_min={cfg["safe_min"]} safe_max={cfg["safe_max"]} '
           f'ref_max_age_s={cfg["ref_max_age_s"]} poles={[p[0] for p in cfg["poles"]]}')
 
