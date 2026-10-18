@@ -21,5 +21,8 @@
 __pycache__/
 *.py[cod]
 
+# ===== 过程草稿：只放临时物，不入库（家见 docs/conventions/目录与命名规范.md）=====
+/docs/temp/
+
 # ===== 编辑器 / IDE 本地设置（个人偏好，不入库）=====
 .vscode/
