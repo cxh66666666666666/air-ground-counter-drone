@@ -33,31 +33,32 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from rosgraph_msgs.msg import Clock
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 
 from agc_msgs.msg import AgcTaskState
 from std_srvs.srv import Trigger
 
-TERMINALS = {
-    AgcTaskState.TRACKING_SUCCESS, AgcTaskState.INTERCEPT_CONFIRMED,
-    AgcTaskState.MISSION_FAILED, AgcTaskState.ABORTED, AgcTaskState.INFRA_FAILURE,
-}
-TERMINAL_NAMES = {
-    AgcTaskState.TRACKING_SUCCESS: 'TRACKING_SUCCESS',
-    AgcTaskState.INTERCEPT_CONFIRMED: 'INTERCEPT_CONFIRMED',
-    AgcTaskState.MISSION_FAILED: 'MISSION_FAILED',
-    AgcTaskState.ABORTED: 'ABORTED',
-    AgcTaskState.INFRA_FAILURE: 'INFRA_FAILURE',
-}
+# W7-a（R1）：episode 结束判定 / 预算口径的**单一来源** = `agc_rl.termination`
+# （训练 adapter 与评估 adapter 共用同一判定，spec R1 判据：摘要与 adapter end/reason 一致）。
+from agc_rl.termination import (  # noqa: E402
+    TERMINALS,
+    TIME_BUDGETS,
+    classify_episode_outcome,
+    classify_acceptance_layers,
+    summarize_metrics,
+    build_time_evidence,
+)
 
 ROOT = '/home/chen/AGC'
-
-SUCCESS_TERMINALS = {'TRACKING_SUCCESS', 'INTERCEPT_CONFIRMED'}
 
 # R-031：就绪门槛用到的真值旁路话题（与 scenario_reset 默认一致）与新鲜窗口。
 GT_CAR_TOPIC = '/agc/gt/agc_car'
 GT_TARGET_TOPIC = '/agc/gt/intruder_uav'
 GT_FRESH_S = 1.0
+
+# W7-a（R5）：命令链回环门槛——`/agc/ground/cmd_vel`（唯一执行口输出）新鲜即命令链已活。
+CMD_TOPIC = '/agc/ground/cmd_vel'
+CMD_FRESH_S = 1.0
 
 # R-031：受限进程组回收的时间预算（SIGINT 优雅 → SIGKILL 强杀，各步 wait 确认退出）。
 REAP_SIGINT_S = 8.0
@@ -67,23 +68,6 @@ REAP_SIGKILL_S = 4.0
 def _num_str(v):
     """R-031：数值 / not_applicable（None 或字符串）统一格式化，避免 %.3f 对 None 抛异常。"""
     return ('%.3f' % v) if isinstance(v, (int, float)) else 'n/a'
-
-# R-024：三类时间预算口径标签（互不冒充）。clock 字段标注时钟来源；owner 标注归属节点/进程。
-TIME_BUDGETS = {
-    'mission_sim_budget': {
-        'clock': 'ros_sim', 'owner': 'task_manager', 'param': 't_max_s',
-        'note': 'C4 任务超时（仿真时钟 now-start_time）；由 task_manager 拥有，非本 runner 墙钟',
-    },
-    'episode_wall_watchdog': {
-        'clock': 'wall_monotonic', 'owner': 'episode_runner', 'param': 'wall_watchdog_s',
-        'note': '外部看门狗：runner 墙钟等待 episode 结束的上限；超时判 infra、不算成功',
-    },
-    'process_wall_duration': {
-        'clock': 'wall_steady', 'owner': 'run_logger', 'param': 'duration_s',
-        'note': '进程时长（墙钟，含预热 / 关闭）；非 episode 预算',
-    },
-}
-
 
 # R-025：本 runner 固定轻量后端（无 PX4 / 空中链路）。
 BACKEND = 'lightweight'
@@ -131,84 +115,6 @@ def build_coverage(mode, episodes):
     }
 
 
-def episode_outcome_match(terminal_state, reason_code, expected_terminal, expected_reason):
-    return (terminal_state == expected_terminal) and (not expected_reason or reason_code == expected_reason)
-
-
-def classify_episode_outcome(terminal_state, reason_code, expected_terminal, expected_reason,
-                             wall_elapsed_s, wall_watchdog_s):
-    """R-024：episode 结束判定的**唯一来源**（eval adapter；train adapter 必须复用同一语义）。
-    区分三类口径：mission_sim_budget（仿真时钟终态）/ episode_wall_watchdog（墙钟超时，判 infra、
-    **不算成功**）/ 进程时长（logger，仅记录、不参与判定）。
-    """
-    match = episode_outcome_match(terminal_state, reason_code, expected_terminal, expected_reason)
-    if terminal_state == 'INFRA_FAILURE':
-        return {'outcome_class': 'infra_failure', 'classification': 'infra', 'budget_kind': None,
-                'counted_as_success': False, 'expected_match': bool(match),
-                'reason': reason_code or 'infra_failure'}
-    if terminal_state in SUCCESS_TERMINALS:
-        return {'outcome_class': 'mission_terminal', 'classification': 'mission',
-                'budget_kind': 'mission_sim_budget', 'counted_as_success': bool(match),
-                'expected_match': bool(match), 'reason': reason_code}
-    if terminal_state in ('MISSION_FAILED', 'ABORTED'):
-        return {'outcome_class': 'mission_terminal', 'classification': 'mission',
-                'budget_kind': 'mission_sim_budget', 'counted_as_success': False,
-                'expected_match': bool(match), 'reason': reason_code}
-    # 未达终态：等待被墙钟看门狗停止（EPISODE_WALL_WATCHDOG 超时）
-    return {'outcome_class': 'wall_watchdog_timeout', 'classification': 'infra',
-            'budget_kind': 'episode_wall_watchdog', 'counted_as_success': False,
-            'expected_match': False, 'reason': 'episode_wall_watchdog exhausted'}
-
-
-def classify_acceptance_layers(result):
-    """R-031：三层验收判定——**三层全必过**方可 `pass`；`expected_match` 仅属命题层。
-
-    ① 启动 / 运行完整性：`started` + 子进程退出确认 + `summary` 存在 + 同 run 关联（summary + state）。
-    ② 终态命题：`expected_terminal` / `expected_reason`（= 原 `expected_match`）。
-    ③ 指标有效性：C9 两指标为**有效数值**（`not_applicable`/缺失 → 无效），**不**以 0 冒充。
-    """
-    integrity = bool(
-        result.get('started')
-        and result.get('proc_exit_confirmed')
-        and result.get('summary_present')
-        and result.get('same_run_verified')
-        and result.get('state_run_verified'))
-    proposition = bool(result.get('expected_match'))
-    metrics_ok = (isinstance(result.get('shield_infeasible_rate'), (int, float))
-                  and isinstance(result.get('reset_failure_rate'), (int, float)))
-    return {
-        'layer_integrity': integrity,
-        'layer_proposition': proposition,
-        'layer_metrics': metrics_ok,
-        'pass': bool(integrity and proposition and metrics_ok),
-    }
-
-
-def summarize_metrics(episodes):
-    """R-031：C9 指标汇总——**不**剔除缺 summary 的回合；如实报缺失计数 / 比例；空集合 → not_applicable。
-
-    均值**仅基于有效样本**；缺失 / `not_applicable` 回合**不**以 0 冒充有效（沿用 R-027 not_applicable 语义）。
-    """
-    def _one(key):
-        vals, missing = [], 0
-        for e in episodes:
-            v = e.get(key)
-            if isinstance(v, (int, float)):
-                vals.append(float(v))
-            else:
-                missing += 1
-        return {
-            'value': (sum(vals) / len(vals)) if vals else 'not_applicable',
-            'valid_count': len(vals),
-            'missing_count': missing,
-            'missing_ratio': (missing / len(episodes)) if episodes else 0.0,
-        }
-    return {
-        'shield_infeasible_rate': _one('shield_infeasible_rate'),
-        'reset_failure_rate': _one('reset_failure_rate'),
-    }
-
-
 def summarize_layers(episodes):
     """R-031：三层验收汇总——逐层通过计数 + 完整性失败场景 / 缺 summary 场景（不含 unsupported）。"""
     def _fail(scene_of):
@@ -220,27 +126,6 @@ def summarize_layers(episodes):
         'layer_metrics_count': sum(1 for e in episodes if e.get('layer_metrics')),
         'integrity_failures': _fail(lambda e: e.get('layer_integrity')),
         'summary_missing_episodes': _fail(lambda e: e.get('summary_present')),
-    }
-
-
-def compute_rtf(sim_start_s, sim_end_s, wall_start_s, wall_end_s):
-    """RTF = 仿真时间增量 / 墙钟增量；仿真时钟缺席或墙钟增量 <= 0 → None。"""
-    if sim_start_s is None or sim_end_s is None:
-        return None
-    wall = wall_end_s - wall_start_s
-    if wall <= 0.0:
-        return None
-    return (sim_end_s - sim_start_s) / wall
-
-
-def build_time_evidence(wall_start_s, wall_end_s, sim_start_s, sim_end_s):
-    """R-024：同一 run 的起止事件 + RTF 证据（不同 RTF 的成功率 / 耗时可比）。"""
-    sim_elapsed = None if (sim_start_s is None or sim_end_s is None) else (sim_end_s - sim_start_s)
-    return {
-        'wall_start_s': wall_start_s, 'wall_end_s': wall_end_s,
-        'wall_elapsed_s': wall_end_s - wall_start_s,
-        'sim_start_s': sim_start_s, 'sim_end_s': sim_end_s, 'sim_elapsed_s': sim_elapsed,
-        'rtf': compute_rtf(sim_start_s, sim_end_s, wall_start_s, wall_end_s),
     }
 
 
@@ -329,10 +214,12 @@ class Monitor(Node):
         self.terminal_wall = None   # R-031：首个终态观测的墙钟时刻（用于同 episode 关联）
         self.gt_car_rx = None       # R-031：车/目标真值旁路最近接收墙钟（就绪门槛用）
         self.gt_target_rx = None
+        self.cmd_rx = None          # W7-a：/agc/ground/cmd_vel 回环最近接收墙钟
         self.create_subscription(AgcTaskState, '/agc/task/state', self._on, 20)
         self.create_subscription(Clock, '/clock', self._on_clock, 1)
         self.create_subscription(PoseStamped, GT_CAR_TOPIC, self._on_gt_car, 10)
         self.create_subscription(PoseStamped, GT_TARGET_TOPIC, self._on_gt_target, 10)
+        self.create_subscription(TwistStamped, CMD_TOPIC, self._on_cmd, 20)
         self.cli = self.create_client(Trigger, '/agc/task/start')
 
     def _on(self, m):
@@ -353,12 +240,19 @@ class Monitor(Node):
     def _on_gt_target(self, m):
         self.gt_target_rx = time.monotonic()
 
+    def _on_cmd(self, m):
+        self.cmd_rx = time.monotonic()
+
     def gt_fresh(self):
         """R-031：车 / 目标真值旁路是否**均在新鲜窗口内**（scenario_reset 复位前置：gt 新鲜）。"""
         t = time.monotonic()
         car_ok = self.gt_car_rx is not None and (t - self.gt_car_rx) < GT_FRESH_S
         tgt_ok = self.gt_target_rx is not None and (t - self.gt_target_rx) < GT_FRESH_S
         return bool(car_ok and tgt_ok)
+
+    def cmd_fresh(self):
+        """W7-a（R5）：`/agc/ground/cmd_vel` 回环是否在新鲜窗口内（命令链已活）。"""
+        return self.cmd_rx is not None and (time.monotonic() - self.cmd_rx) < CMD_FRESH_S
 
     def sim_span(self):
         return (self.sim_first, self.sim)
@@ -388,9 +282,9 @@ def wait_ready(mon, timeout_s):
     t0 = time.monotonic()
     while time.monotonic() - t0 < timeout_s:
         rclpy.spin_once(mon, timeout_sec=0.1)
-        if mon.cli.service_is_ready() and mon.gt_fresh():
+        if mon.cli.service_is_ready() and mon.gt_fresh() and mon.cmd_fresh():
             return True
-    return mon.cli.service_is_ready() and mon.gt_fresh()
+    return mon.cli.service_is_ready() and mon.gt_fresh() and mon.cmd_fresh()
 
 
 def _group_alive(pgid):
@@ -435,7 +329,8 @@ def _reap_process_group(proc, pgid):
         time.sleep(0.2)
     return (not _group_alive(pgid)), proc.returncode
 
-def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers, ready_timeout_s):
+def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers, ready_timeout_s,
+                command_source='rl'):
     scenario = registry[scene]['params'].get('run_logger', {}).get('scenario', scene)
     world = os.path.join(ROOT, 'install/agc_sim/share/agc_sim/worlds/agc_world.sdf')
     gz = ('-r -v 3 ' if mode == 'gui' else '-s -r -v 3 ') + world
@@ -446,7 +341,8 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
     wall_start_s = time.monotonic()
     proc = subprocess.Popen(
         ['ros2', 'launch', 'agc_task', 'w6.launch.py',
-         'backend:=lightweight', 'scene:=%s' % scene, 'seed:=%d' % seed, 'gz_args:=%s' % gz],
+         'backend:=lightweight', 'scene:=%s' % scene, 'seed:=%d' % seed, 'gz_args:=%s' % gz,
+         'command_source:=%s' % command_source],
         stdout=open(log, 'w'), stderr=subprocess.STDOUT, start_new_session=True)
     try:
         pgid = os.getpgid(proc.pid)   # R-031：Popen 后即取组 id（防 leader 先死无法反查组）
@@ -454,6 +350,7 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
         pgid = None
 
     result = {'scene': scene, 'seed': seed, 'scenario': scenario,
+              'command_source': command_source,
               'expected_terminal': registry[scene].get('expected_terminal'),
               'expected_reason': registry[scene].get('expected_reason')}
     try:
@@ -544,6 +441,9 @@ def main():
                     help='R-029：等待 /agc/task/start 服务就绪的上限（秒）')
     ap.add_argument('--campaign', default='w6-task-eval')
     ap.add_argument('--run-id', default=None)
+    # W7-a（R5）：命令源单一选择——`rl`（RL 主控）默认 / `baseline`（Navfn + 自研 LQR 离线对照基线）。
+    # 由 w6.launch.py 透传至 ground_bringup；缺省 `rl` → 既有 W6 证据行为不变。
+    ap.add_argument('--command-source', default='rl', choices=['rl', 'baseline'])
     args = ap.parse_args()
 
     wall_watchdog_s = args.wall_watchdog_s if args.wall_watchdog_s is not None else args.timeout
@@ -576,9 +476,11 @@ def main():
                     scene, seed, support_status))
                 episodes.append(skipped_result(scene, seed, registry, carriers))
                 continue
-            print('=== episode: %s seed=%d ===' % (scene, seed))
+            print('=== episode: %s seed=%d [command_source=%s] ===' % (
+                scene, seed, args.command_source))
             r = run_episode(scene, seed, registry, args.mode, wall_watchdog_s, out_dir, carriers,
-                            ready_timeout_s=args.ready_timeout_s)
+                            ready_timeout_s=args.ready_timeout_s,
+                            command_source=args.command_source)
             print('  terminal=%s reason=%s expected_match=%s pass=%s integrity=%s outcome_class=%s shield=%s reset=%s'
                   % (r.get('terminal_state'), r.get('reason_code'), r.get('expected_match'),
                      r.get('pass'), r.get('layer_integrity'), r.get('outcome_class'),
@@ -595,6 +497,8 @@ def main():
         'run_id': run_id, 'campaign': args.campaign, 'mode': args.mode,
         # R-025：后端 / launch 标注（本 runner 恒为轻量后端；不冒充整链 / GUI 验收）
         'backend': BACKEND, 'launch': LAUNCH,
+        # W7-a（R5）：命令源（rl | baseline）——baseline = Navfn + 自研 LQR 离线对照基线。
+        'command_source': args.command_source,
         'git_commit': next((e.get('git_commit') for e in episodes if e.get('git_commit')), 'unknown'),
         'n_episodes': len(episodes),
         # R-031：C9 两指标（均值仅基于**有效**样本；缺失 / not_applicable 如实标注，不以 0 冒充）

@@ -23,7 +23,7 @@ W6 落地为 `agc_task/capture_adjudicator`（[源码](../../src/agc_task/src/ca
 
 **(c) 该替换在 [ADR-0022](./0022-launched-net-capture-mechanism.md)(c) 预留的**可插拔接口**内完成，**对外不破坏**：最终终态（`INTERCEPT_CONFIRMED` / `reason_code`）与冻结 **9 消息** ABI **不变**，唯一执行口 **不变**。
 
-> **范围澄清**（[ADR-0058](./0058-capture-adjudicator-replacement-contract-and-event-semantics.md) 采纳；挑战原意见 [X-05](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-05)）：本项「调用方不改」**限定为对外可观测契约**，**不**等于"裁决器无内部事件语义、零实现演进"。真实弹道替换**允许**在**内部**引入 **shot 生命周期**（射击请求 / 发射 / 到达 / 命中 / 失手 / 取消 / 冷却）与异步事件，消费侧可在既有 ABI 内做必要的状态清理与关联（**不**新增第二 ROS 命令者）。执行顺序：**先**完成 R-021 的 episode 隔离与事件身份（[ADR-0036](./0036-capture-event-episode-isolation-and-event-identity.md)），**再**替换弹道判定器。
+> **范围澄清**（[ADR-0058](./0058-capture-adjudicator-replacement-contract-and-event-semantics.md) 采纳；挑战原意见 [X-05](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-05)）：本项「调用方不改」**限定为对外可观测契约**，**不**等于"裁决器无内部事件语义、零实现演进"。真实弹道替换**允许**在**内部**引入 **shot 生命周期**（射击请求 / 发射 / 到达 / 命中 / 失手 / 取消 / 冷却）与异步事件，消费侧可在既有 ABI 内做必要的状态清理与关联（**不**新增第二 ROS 命令者）。执行顺序：**先**完成 R-021 的 episode 隔离与事件身份（[ADR-0036](./0036-capture-event-episode-isolation-and-event-identity.md)），**再**替换弹道判定器。
 
 ## Considered Options
 

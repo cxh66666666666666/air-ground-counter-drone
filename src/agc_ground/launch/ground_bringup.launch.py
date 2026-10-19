@@ -14,6 +14,8 @@
                   仅安全层 + 唯一执行口中继。
   * `baseline` —— `agc_ground` 的离线对照基线（Nav2 planner 插件 + `agc_control` LQR 插件）；
                   基线自持内建 costmap（同一 `config/costmap.yaml` 参数源），故不再单起 costmap 节点。
+  * `train`    —— W7-a（R6）：W7 **外部训练 / 评估适配层**（`agc_rl` env / runner）作命令源，独占发布
+                  `/agc/ground/cmd_vel_raw`；本链路**不**起 rl / baseline 发布者，仅安全层 + 中继。
 
 参数单一来源：`config/ground.yaml`（安全层 / 中继）、`config/costmap.yaml`（分层 costmap，基线自持）、
 `config/baseline.yaml`（基线）、`agc_rl/config/rl.yaml`（RL）（契约 #params）。
@@ -100,6 +102,11 @@ def _nodes(context, *args, **kwargs):
             output='screen',
         ))
         managed = ['collision_monitor', 'ground_baseline']
+    elif command_source == 'train':
+        # W7-a（R6）：命令源 = W7 **外部训练 / 评估适配层**（`agc_rl` env / runner，非本图内节点）。
+        # 适配层独占发布 `/agc/ground/cmd_vel_raw`；本链路**不**起 rl / baseline 发布者，
+        # 仅保留安全层 + 唯一执行口中继——链路语义与 `rl` 一致（安全层仍是唯一 shield，ADR-0004）。
+        managed = ['collision_monitor']
     else:
         # W5-b：命令源 = agc_rl 推理节点（include agc_rl 的 launch）。
         # S-04（ADR-0060）：RL 主控**不消费** costmap → **不**起闲置的独立 `nav2_costmap_2d` 进程；
@@ -128,6 +135,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument(
             'command_source', default_value='rl',
-            description='命令源（互斥）：rl（RL 主控，ADR-0004）| baseline（离线对照基线，R8）'),
+            description='命令源（互斥）：rl（RL 主控，ADR-0004）| baseline（离线对照基线，R8）'
+                        '| train（W7-a 外部训练 / 评估适配层作命令源）'),
         OpaqueFunction(function=_nodes),
     ])

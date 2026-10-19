@@ -1,12 +1,14 @@
 # C3 GUI 验收范围裁定：定性验收与规模统计分开授权（X-02）
 
+> 注（S-05 · [ADR-0061](0061-w6-runtime-topology-backend-identity-and-single-parameterized-entry.md)）：W6 顶层入口已统一为 [`w6.launch.py`](../../src/agc_task/launch/w6.launch.py)（`backend` ∈ lightweight | full）；被 [ADR-0044](0044-unique-run-identity-and-reproducible-evidence.md) 取代的 `20261014-*` 旧 run 已不在磁盘，**历史结论正文不改**。
+
 ## Status
 
 accepted
 
 ## 背景
 
-评审挑战 **X-02**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-02)）针对契约
+评审挑战 **X-02**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-02)）针对契约
 [#hard-constraints](../ROS2迁移交接文档.md#hard-constraints) **C3** 的原文字「实证/验收**使用非无头（GUI）**；
 默认仍无头以向后兼容」提出：
 
@@ -55,7 +57,7 @@ accepted
 - **产物纪律**：campaign / episode 产物必带 `backend` / `mode` 标签（承接 [ADR-0040](./0040-full-chain-coverage-matrix-and-same-run-causal-record.md) (a)）。
 - **裁定前**：现 headless 产物**仅作辅助证据**，C3 仍以 GUI 材料为准（不静默改变现状结论）。
 - **迁移成本：低至中**：契约文字裁定 + 报告 backend/mode 标签 + 两模式**配对验收**；不需改 PX4 链路、包边界或冻结 ABI。
-- **只读边界**：本 ADR 只读 [10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-02) 与契约；未读 `reference/`；未改任何源码 / 契约。
+- **只读边界**：本 ADR 只读 [10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-02) 与契约；未读 `reference/`；未改任何源码 / 契约。
 
 ## 验收方法（裁定后）
 

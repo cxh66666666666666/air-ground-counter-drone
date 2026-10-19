@@ -6,12 +6,12 @@ accepted
 
 ## 背景
 
-评审风险 **R-027（不可行率定义）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-027)）指出：
+评审风险 **R-027（不可行率定义）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-027)）指出：
 [`run_logger`](../../src/agc_task/src/run_logger.cpp) 的 `shield_infeasible_rate` 把「安全层触发
 （`collision_monitor` STOP/SLOWDOWN）且前向扫描 ≤ `contact_dist_m`」直接当作**接触 / 不可行**，
 **不要求实际接触 / 制动失败**；TTC = `range/|v_body|` 忽略目标闭合、车体边界与转弯；拍分母受 `odom`
 发布频率与停止驻留时长影响。后果：**正常提前停车可得到高不可行率**，`753/753` 不能证明每拍发生物理接触；
-不同策略停车时长改变统计；C9 字段存在 ≠ 统计可解释（另见 [X-06](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-06)）。
+不同策略停车时长改变统计；C9 字段存在 ≠ 统计可解释（另见 [X-06](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-06)）。
 
 契约真源：[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints) **C9**（必报指标）、
 [#params](../ROS2迁移交接文档.md#params)（单一注入，节点不得覆写）、

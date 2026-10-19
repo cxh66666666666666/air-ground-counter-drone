@@ -3,7 +3,7 @@
 <package format="3">
   <name>agc_rl</name>
   <version>0.0.0</version>
-  <description>AGC RL 平台：W5-b 地面 RL 最小版（接口冻结 + 可加载策略推理节点）；训练产线留 W7</description>
+  <description>AGC RL 平台：W5-b 地面 RL 最小版（接口冻结 + 可加载策略推理节点）+ W7-a 最小平台（obs/action 版本化、train/eval 协议、种子分解、单 worker 可重放）</description>
   <maintainer email="agc@example.com">AGC Dev</maintainer>
   <license>Proprietary</license>
 
@@ -11,6 +11,8 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>rosgraph_msgs</depend>
+  <depend>std_srvs</depend>
   <depend>agc_msgs</depend>
 
   <!-- 推理节点用 `get_package_share_directory` 解析策略路径；launch 起推理节点 -->

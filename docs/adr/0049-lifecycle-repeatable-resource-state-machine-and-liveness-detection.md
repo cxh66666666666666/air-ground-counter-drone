@@ -12,7 +12,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-034（生命周期恢复）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-034)）指出，
+评审风险 **R-034（生命周期恢复）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-034)）指出，
 W3 空中链路的生命周期只验证了**首次 autostart**，跨 episode 复用 / 故障恢复的可靠性不足：
 
 - [`agc_lifecycle_node.hpp`](../../src/agc_air/include/agc_air/agc_lifecycle_node.hpp) 的 `AgcLifecycleNode`
@@ -20,7 +20,7 @@ W3 空中链路的生命周期只验证了**首次 autostart**，跨 episode 复
   `on_shutdown` / `on_error` 清理路径；
 - [`trajectory_tracker.cpp`](../../src/agc_air/src/trajectory_tracker.cpp) 在 `configure` 反复
   `declare_parameter`（`cleanup` 不 `undeclare`）→ `cleanup→configure` 二轮可能抛**重复参数异常**；
-- [`w6_full.launch.py`](../../src/agc_task/launch/w6_full.launch.py) 与
+- [`w6_full.launch.py`](../../src/agc_task/launch/w6.launch.py) 与
   [`air_bringup.launch.py`](../../src/agc_air/launch/air_bringup.launch.py) 的 `lifecycle_manager_air`
   **`bond_timeout=0.0`** → **关闭节点失联检测**（且注释自认节点未创建 bond）；
 - 部分 timer 为 `wall timer`，退出时 Offboard setpoint 如何**失效停机**未明确。
@@ -151,7 +151,7 @@ bond 失联检测；manager 检测被管节点死亡 → 硬复位）。**不**�
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-034)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-034)
 - 规格：[fix-lifecycle-control-height-numeric-r34-r38 spec](../../.trae/specs/fix-lifecycle-control-height-numeric-r34-r38/spec.md)（R-034）
 - Nav2 参照：`nav2_util::LifecycleNode`（`createBond` / `destroyBond` / `on_rcl_preshutdown`）/
   `nav2_lifecycle_manager`（`createBondConnection` / `checkBondConnections` / `bond_timeout`）/ `bondcpp`（`Bond` /

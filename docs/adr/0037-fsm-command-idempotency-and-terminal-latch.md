@@ -6,7 +6,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-022（FSM 重入与终态）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-022)）指出
+评审风险 **R-022（FSM 重入与终态）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-022)）指出
 `task_manager`（[源码](../../src/agc_task/src/task_manager.cpp)）的命令入口**非幂等**：
 
 1. **start 无允许态检查**：`onStart` 顶部无状态判别，立即尝试 `scenario/reset`；**active** 期间重入
@@ -91,7 +91,7 @@ best-effort（`required=false`）可选调用语义不变。
   与 R-021 配套事件可关联。
 - **ABI 不变**：新增话题均 `std_msgs` 状态；唯一执行口未改；未新增命令者；`capture_hit` 仍恰为 `CAPTURE_NET`。
 - **风险标注 / 置信度**：以自包含 harness（假源 + 假 reset 服务，含**慢应答**桩）验证，见 [Evidence](#evidence)；
-  命令入口与状态赋值的确定性由契约证据保证（[R-022](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-022) 置信度：高）。
+  命令入口与状态赋值的确定性由契约证据保证（[R-022](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-022) 置信度：高）。
 - 只读旧树边界：本次未读 `reference/`；未新增契约 / ABI 变更。
 
 ## Evidence

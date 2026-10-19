@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-结构评审 [S-08](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-08)（**证据保全**，高）指出：
+结构评审 [S-08](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-08)（**证据保全**，高）指出：
 git 只入库 `config/`，`bag/` / `log/` / `metrics/` / `figures/` 一律忽略（[.gitignore](../../.gitignore)），
 **无**归档 manifest / 内容哈希 / 访问位置 / 保留期 → **clone 不能复核已完成状态**；
 重建机器或清临时目录可**永久失去科研证据**（[ADR-0045](0045-resetfail-evidence-contradiction-registration-and-redo.md)
@@ -95,13 +95,13 @@ R-030 / R-036 的证据丢失事实**只引用** [ADR-0045](0045-resetfail-evide
 - **代价 / 限制**：`experiments/_archive/` 为**本地**归档（不随 clone 分发），跨机器复核需另移植归档；
   归档为**一次性快照**，run 后续若追加产物，其归档即**非最新**（需 `--force` 重建并**重记哈希**，
   旧归档哈希随之失效）；`--force` 重建会**改写**归档，故重建须显式、可追溯。
-- **未决 / 后续**：外部（异地）归档与分发属 W8 正式冻结项（评审 [S-08](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-08)
+- **未决 / 后续**：外部（异地）归档与分发属 W8 正式冻结项（评审 [S-08](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-08)
   亦将其列 W8 出口）；「小审定摘要入 git」按项目裁定另行决定。
 - 与旧树：**只读**对齐**行为事实**（WHAT），**不**复制旧代码 / 资产（HOW）。
 
 ## 参考
 
-- 评审：[20-结构](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-08) / [10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-030)
+- 评审：[20-结构](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-08) / [10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-030)
 - 规格：[fix-structure-geometry-evidence-toolchain-s06-s10 spec](../../.trae/specs/fix-structure-geometry-evidence-toolchain-s06-s10/spec.md)
 - 前序：[ADR-0007](0007-experiment-artifacts-convention.md)（唯一落点）/ [ADR-0044](0044-unique-run-identity-and-reproducible-evidence.md)（唯一运行身份）/ [ADR-0045](0045-resetfail-evidence-contradiction-registration-and-redo.md)（证据丢失登记）/ [ADR-0046](0046-runner-three-layer-acceptance-and-integrity-gate.md)（三层验收）
 - 契约：[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints)（C9）/ [#params](../ROS2迁移交接文档.md#params)（单一注入）

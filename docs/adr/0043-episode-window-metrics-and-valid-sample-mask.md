@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-028（统计窗口与异步快照）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-028)）指出：
+评审风险 **R-028（统计窗口与异步快照）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-028)）指出：
 [`run_logger`](../../src/agc_task/src/run_logger.cpp) 把**进程全过程**（含预热 / 关闭）当统计窗口；
 `terminal_state` 实为**最后任意 `state`**（会被覆写）；`scan` 与 `collision action` 无采样新鲜度关联，
 陈旧 `scan` 会按新 `odom` **重复计数**；没触发 / 没 `scan` 时默认记 0。后果：预热比例改变统计；
@@ -112,7 +112,7 @@ accepted
 
 ## 参考
 
-- [10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-028)（R-028）
+- [10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-028)（R-028）
 - [spec](../../.trae/specs/fix-scenario-axis-metrics-identity-r26-r30/spec.md#requirement-episode-窗口统计终态锁存与有效样本掩码r-028)（R-028 Requirement）
 - [ADR-0042](0042-safety-infeasibility-honest-metric-and-contact-evidence.md)（proxy_v1 / gz_contact_v1）
 - [ADR-0007](0007-experiment-artifacts-convention.md)（产物落点）

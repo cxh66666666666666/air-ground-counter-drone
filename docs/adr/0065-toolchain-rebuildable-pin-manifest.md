@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-结构评审 [S-09](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-09)（**工具链可重建性**，高）指出：
+结构评审 [S-09](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-09)（**工具链可重建性**，高）指出：
 [`toolchain/`](../../toolchain/README.md) 内容**不入 git**（[.gitignore](../../.gitignore) 仅放行
 `/toolchain/README.md`），而 README 原先只有**版本 tag + 局部配方**，
 **无**源 SHA / submodule / 补丁与兼容输入来源 / 依赖版本 / 构建选项 / **产物 binary 哈希**清单。
@@ -99,7 +99,7 @@ ROS 侧 DDS 直接来自 `/opt/ros/jazzy`，**无需自建**）。
 
 ## 参考
 
-- 评审：[20-结构](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-09) / [00-总览](../../docs/temp/agc-review-2026-10-14/00-总览.md)
+- 评审：[20-结构](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-09) / [00-总览](../../docs/reviews/agc-review-2026-10-14/00-总览.md)
 - 规格：[fix-structure-geometry-evidence-toolchain-s06-s10 spec](../../.trae/specs/fix-structure-geometry-evidence-toolchain-s06-s10/spec.md)
 - 前序：[ADR-0012](0012-px4-body-as-toolchain-dependency.md)（PX4 本体外部依赖）/ [ADR-0005](0005-px4-link-uxrce-dds.md)（uXRCE-DDS + `px4_msgs`）/ [ADR-0003](0003-nav2-pattern-complete-absorption.md)（Nav2 走 apt + `<depend>` 对照）
 - 契约：[#decisions](../ROS2迁移交接文档.md#decisions)（PX4 本体 = 外部依赖）/ [#messages](../ROS2迁移交接文档.md#messages)（ABI 冻结）/ [#params](../ROS2迁移交接文档.md#params)

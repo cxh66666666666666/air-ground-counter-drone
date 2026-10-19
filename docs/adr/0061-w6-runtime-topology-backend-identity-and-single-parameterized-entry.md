@@ -5,7 +5,7 @@ accepted
 
 ## 背景与决策
 
-结构评审 [S-05](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-05)（**用户裁定 · 正式修订**）指出：`m0_skeleton` / `w6_task_eval` / `w6_full` **重复组装**——后两者各自内联一份**完全相同**的场景配置解析（base/registry/carriers 加载、carrier 校验、参数合并、轴断言、manifest 生成），且参数路径分叉（`full` 另用 `air.yaml`）；`backend` 未贯穿 summary；`launch` 身份字段与**入口名**分离；关键段启动依赖由**绝对时间 `TimerAction`**（12 / 25 / 35 s）承载。后果：配置漂移不易发现、拓扑未成为可审查实体。契约真源：[#params](../ROS2迁移交接文档.md#params)（launch 单一设置 / 节点不得覆写）、[#execution-port](../ROS2迁移交接文档.md#execution-port)、[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints)（C1–C10）、[#terminal-semantics](../ROS2迁移交接文档.md#terminal-semantics)。
+结构评审 [S-05](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-05)（**用户裁定 · 正式修订**）指出：`m0_skeleton` / `w6_task_eval` / `w6_full` **重复组装**——后两者各自内联一份**完全相同**的场景配置解析（base/registry/carriers 加载、carrier 校验、参数合并、轴断言、manifest 生成），且参数路径分叉（`full` 另用 `air.yaml`）；`backend` 未贯穿 summary；`launch` 身份字段与**入口名**分离；关键段启动依赖由**绝对时间 `TimerAction`**（12 / 25 / 35 s）承载。后果：配置漂移不易发现、拓扑未成为可审查实体。契约真源：[#params](../ROS2迁移交接文档.md#params)（launch 单一设置 / 节点不得覆写）、[#execution-port](../ROS2迁移交接文档.md#execution-port)、[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints)（C1–C10）、[#terminal-semantics](../ROS2迁移交接文档.md#terminal-semantics)。
 
 **裁定**（**不**改冻结 ABI / 唯一执行口语义 / [Runbook #status](../ROS2迁移步骤.md#status)）：
 

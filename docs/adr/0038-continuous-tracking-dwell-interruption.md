@@ -6,7 +6,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-023（连续跟踪判据）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-023)）指出
+评审风险 **R-023（连续跟踪判据）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-023)）指出
 `task_manager`（[源码](../../src/agc_task/src/task_manager.cpp)）的 dwell 判据**不是逐拍连续的**：
 
 1. **空目标数组不清 dwell**：`target_sub_` 收到空数组仅置 `have_target_=false`；`tickFsm` 的
@@ -95,7 +95,7 @@ accepted
   `CAPTURE_NET`；契约文档未改。
 - **风险标注 / 置信度**：以自包含 harness（假源 + 假 reset 服务，含**空数组**与**停发 odom** 桩）
   验证，见 [Evidence](#evidence)；判据分支的确定性由契约证据保证
-  （[R-023](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-023) 置信度：高）。
+  （[R-023](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-023) 置信度：高）。
 - 只读旧树边界：本次未读 `reference/`；未新增契约 / ABI 变更。
 
 ## Evidence

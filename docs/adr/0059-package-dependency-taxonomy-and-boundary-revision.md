@@ -5,7 +5,7 @@ accepted
 
 ## 背景与决策
 
-W0 产出的 [包边界](../conventions/包边界.md) 把**消息通信 / 库链接 / launch 依赖混成同一规则**：原文规则 1「`agc_msgs` 是唯一公共依赖」与规则 2「其余包之间不得互相依赖对方的库」照字面会**禁止必要的运行依赖**（如 `agc_task` 在 launch 中起 `agc_air` / `agc_ground` / `agc_perception`），或促使这些真实运行依赖被隐藏、未在 manifest 声明；依赖方向图也无法解释现状（`agc_task` 承载 PX4 驱动 / 干扰注入、跨域合理使用 `nav_msgs` / `geometry_msgs`）。此为结构评审 [S-02](../temp/agc-review-2026-10-14/20-结构.md#s-02)「挑战既定约束」项，**经用户裁定正式修订**（改规范 + 记 ADR）。
+W0 产出的 [包边界](../conventions/包边界.md) 把**消息通信 / 库链接 / launch 依赖混成同一规则**：原文规则 1「`agc_msgs` 是唯一公共依赖」与规则 2「其余包之间不得互相依赖对方的库」照字面会**禁止必要的运行依赖**（如 `agc_task` 在 launch 中起 `agc_air` / `agc_ground` / `agc_perception`），或促使这些真实运行依赖被隐藏、未在 manifest 声明；依赖方向图也无法解释现状（`agc_task` 承载 PX4 驱动 / 干扰注入、跨域合理使用 `nav_msgs` / `geometry_msgs`）。此为结构评审 [S-02](../reviews/agc-review-2026-10-14/20-结构.md#s-02)「挑战既定约束」项，**经用户裁定正式修订**（改规范 + 记 ADR）。
 
 **先学后做（取证）**：对照同版本 Nav2 成功用法——`nav2_bringup` 对**仅被 launch 起进程**的包（`navigation2` / `nav2_minimal_tb3_sim` / `ros_gz_sim` / `ros_gz_bridge`）使用 `<exec_depend>` 而**不** `find_package` 链接其库；对**编译期使用的库**（`nav2_costmap_2d` / `nav2_util`）使用 `<depend>`。即 Nav2 自身已把「链接库」与「起进程」分开声明。
 

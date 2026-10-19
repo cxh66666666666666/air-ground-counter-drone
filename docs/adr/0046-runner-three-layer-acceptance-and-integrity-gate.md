@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-031（runner 假绿）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-031)）指出：
+评审风险 **R-031（runner 假绿）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-031)）指出：
 [`episode_runner`](../../scripts/episode_runner.py) 的回合判定只看**终态字符串**（`expected_match`）——
 `started` / `summary_missing` / 子进程退出码 / 指标有效性**均不进入** `PASS` 判定；**缺 `summary`** 的
 回合被**剔除**均值分母，空集合 `sum/max(len,1)` **返回 0**；按状态字符串等待**无本 run 关联**；
@@ -122,7 +122,7 @@ Case g 9 消息 ABI 未改。产物落 `experiments/w6-task-eval/<run_id>/{runne
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-031)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-031)
 - 规格：[fix-runner-green-freeze-uav-safety-r31-r33 spec](../../.trae/specs/fix-runner-green-freeze-uav-safety-r31-r33/spec.md)（R-031）
 - Nav2 参照：`nav2_lifecycle_manager`（bond / 看门狗）/ `nav2_bringup`（autostart）
 - 前序：[ADR-0044](0044-unique-run-identity-and-reproducible-evidence.md)（唯一 run 身份 / 同 run 关联）、

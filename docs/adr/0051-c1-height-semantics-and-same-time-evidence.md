@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-036（C1 验收与世界高度）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-036)）指出，
+评审风险 **R-036（C1 验收与世界高度）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-036)）指出，
 W3 的 C1 恒速验收把**参考 / 机体估计 / 世界真值**三个指标混用，且高度语义不统一：
 
 - 接管高度对齐使命令 `h` 成为**相对基准**（[`trajectory_tracker.cpp`](../../src/agc_air/src/trajectory_tracker.cpp)
@@ -19,7 +19,7 @@ W3 的 C1 恒速验收把**参考 / 机体估计 / 世界真值**三个指标混
   （`effective.pos.z() += z_offset_`）**高度基准静默不同**；
 - 既有 C1 检查（[`w3_c10_check.py`](../../tests/w3_c10_check.py)）采用 **warmup 之后的速度误差 P95**，
   **不能推出全程最大误差**；
-- 「恒速无加减速」若指**零向量加速度**则与曲线运动不相容（见 [X-01](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-01)）；
+- 「恒速无加减速」若指**零向量加速度**则与曲线运动不相容（见 [X-01](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-01)）；
 - **stock 原始 CSV**（`/tmp/stock_rec{,2,3}.csv`，见 [W3 tasks](../../.trae/specs/w3-air-link/tasks.md)）
   在所述 `/tmp` 路径**均不存在** → 外部归因**不能独立复核**。
 
@@ -91,7 +91,7 @@ C1 检查只给 warmup 后 P95，**无**全程 max / 持续越限；世界 GT �
 - **实际恒速**：**机体（world GT）** 在 **warmup 之后**的速度模**稳态误差**（`P95` 与 `max` **分别**报告）；
   容限 `c1.body_speed_p95_tol_mps = 0.30 m/s`（**占位待回填**：W3「恒速误差 `ε`」尚未实测标定，如实标注）。
 - **「无加减速」正名**：指**参考沿弧长的切向速度恒定（无切向加减速）**；**不**声称「零向量加速度」（曲线运动
-  有向心加速度）。此与契约 C1 字面差异属 [X-01](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-01) 已挑战项，
+  有向心加速度）。此与契约 C1 字面差异属 [X-01](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-01) 已挑战项，
   **如实记录**；**不**改契约文字。
 - **模式记账**：**基准轨迹试验**（base 模式，无 `tracking_ref` / `target`）单独判 C1；**接管瞬态（warmup）/ 自保
   （shield 介入）/ 目标跟踪（tracking 覆盖八字）** 分模式记账，**不**纳入基准恒速判据。
@@ -149,7 +149,7 @@ nedToEnu(sp.velocity)`（`dt = 1/setpoint_rate_hz = 0.02`；`acc_enu = nedToEnu(
 1. **保持现状（公开 `base_ref` 不加 offset，仅文档说明）**：最省事；但对外 `base_ref` 与生效 `effective`
    基准**静默不同**，C1 验收仍混淆 —— 否决 (b)。
 2. **改契约 C1 文字为「切向恒速 + 稳态误差容限」**：超出本批授权（改硬约束须另行批准）—— 否决；改为
-   **裁定口径 + 证据**并如实记录与 [X-01](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-01) 的差异。
+   **裁定口径 + 证据**并如实记录与 [X-01](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-01) 的差异。
 3. **用 PX4 估计（`/agc/air/odom`）当「世界真值」**：把估计偏置（R-003）混入真值，仍三指标混用 —— 否决；
    改为**独立合成 world GT**（并如实标 `unsupported`：非整链 / 非 PX4 SITL 闭环）。
 4. **新增专用「effective 诊断话题」直出内部 effective**：更直接；但会**新增话题 / 表面命令者嫌疑**，且
@@ -171,7 +171,7 @@ nedToEnu(sp.velocity)`（`dt = 1/setpoint_rate_hz = 0.02`；`acc_enu = nedToEnu(
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-036)、[X-01](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-01)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-036)、[X-01](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-01)
 - 规格：[fix-lifecycle-control-height-numeric-r34-r38 spec](../../.trae/specs/fix-lifecycle-control-height-numeric-r34-r38/spec.md)（R-036）
 - 契约：[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints)（C1）、[#namespace](../ROS2迁移交接文档.md#namespace)、
   [#execution-port](../ROS2迁移交接文档.md#execution-port)、[#messages](../ROS2迁移交接文档.md#messages)

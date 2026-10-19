@@ -10,11 +10,11 @@ accepted
 
 ## 背景
 
-评审风险 **R-026（场景轴未执行）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-026)）指出：
+评审风险 **R-026（场景轴未执行）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-026)）指出：
 [`scenarios.yaml`](../../src/agc_task/config/scenarios.yaml) 登记 `target_motion × obstacle × perception × outcome`，
 但运行参数**未实现对应实验因子**——`dynamic` 无障碍驱动覆盖；`s06/s07` 无 drop / fov 参数；
 `none/static` 使用**同一世界**（[`agc_world.sdf`](../../src/agc_sim/worlds/agc_world.sdf) 恒含 `pole_1/pole_2`）；
-[`w6_full.launch.py`](../../src/agc_task/launch/w6_full.launch.py) 空中节点读**独立** [`air.yaml`](../../src/agc_air/config/air.yaml)
+[`w6_full.launch.py`](../../src/agc_task/launch/w6.launch.py) 空中节点读**独立** [`air.yaml`](../../src/agc_air/config/air.yaml)
 而非场景 merged 参数；轻量栈不起 `intruder_driver`（`linear/maneuver` 不落到执行者）；且
 `target_source='gt_adapter'`（真值直发）使感知通道模型（`drop_prob` / `hfov`）**不落在** `/agc/targets`
 消费路径。后果：名义 12 场景可能实为**少量配置变种**；对 dropout / FOV / 动态障碍的因果结论**无效**。
@@ -28,7 +28,7 @@ accepted
 **先学后做（取证依据）**：核验本机同版本既有实现——① Nav2 `bringup` 的**参数分层 + 缺失即拒启动**惯例
 （参数 schema 校验，缺参在启动期报错而非静默用默认）；② `ros_gz_sim` / gz 的**世界加载**语义
 （`gz sim <flags> <sdf>`，世界由参数单一指定）；③ 全仓既有 launch 的参数合并与 run 账本惯例
-（[w6_task_eval](../../src/agc_task/launch/w6_task_eval.launch.py) / [run_logger](../../src/agc_task/src/run_logger.cpp)）。
+（[w6_task_eval](../../src/agc_task/launch/w6.launch.py) / [run_logger](../../src/agc_task/src/run_logger.cpp)）。
 结论：应引入**轴→承载者登记 + 启动时校验**，并以**运行时 manifest** 记录实际生效参数；未执行轴**如实标注**。
 
 分类：**设计风险与未决事项**。本 ADR 给出「如何让声明轴 = 执行轴」的明确决定，**不**回退任何已验收组件。
@@ -50,7 +50,7 @@ accepted
 
 ### (b) 启动时校验 + 显式拒绝运行
 
-[w6_task_eval](../../src/agc_task/launch/w6_task_eval.launch.py) 与 [w6_full](../../src/agc_task/launch/w6_full.launch.py)
+[w6_task_eval](../../src/agc_task/launch/w6.launch.py) 与 [w6_full](../../src/agc_task/launch/w6.launch.py)
 **启动时**：对每个声明轴值查承载者登记；**无登记 / `supported:false` → `raise`（拒绝运行）**并给出显式原因；
 `support_status` 为 `unsupported:<axis>` 亦拒绝。**SHALL NOT** 以命名当执行。
 
@@ -77,7 +77,7 @@ accepted
 ### (e) 覆盖账本：`not_carried`（轻量栈）如实标注
 
 承载者需空中链路而后端为**轻量栈**（[episode_runner](../../scripts/episode_runner.py) 恒跑
-[w6_task_eval](../../src/agc_task/launch/w6_task_eval.launch.py) = `m0_skeleton` + 裁决器，**无** PX4 / 空中链路）时，
+[w6_task_eval](../../src/agc_task/launch/w6.launch.py) = `m0_skeleton` + 裁决器，**无** PX4 / 空中链路）时，
 运动轴与感知轴在 manifest 与 runner 报告中标 **`not_carried`**；runner 对 `unsupported` 场景**拒绝运行**（跳过并记原因）。
 **不**把轻量栈的声明轴谎称为已执行。
 

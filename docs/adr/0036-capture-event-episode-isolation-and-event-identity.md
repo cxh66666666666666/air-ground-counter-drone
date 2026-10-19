@@ -6,7 +6,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-021（捕获跨回合污染）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-021)）指出捕获裁决与消费侧
+评审风险 **R-021（捕获跨回合污染）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-021)）指出捕获裁决与消费侧
 存在跨回合污染：
 
 1. **无任务门**：`capture_adjudicator`（[源码](../../src/agc_task/src/capture_adjudicator.cpp)）进入包络即
@@ -19,7 +19,7 @@ accepted
    `capture_reason_` / `jam_reason_`；`capture_hit` 以 `transient_local` 发布而 task 侧以 `volatile` 订阅，
    启动顺序还可能**漏早发事件**；`GROUND_APPROACH` **先判 capture 再判 jam** → 「先命中者胜」实际**固定 capture 优先**。
 
-**接口演进争议（[X-04](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-04)）**：永久冻结九消息（契约
+**接口演进争议（[X-04](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-04)）**：永久冻结九消息（契约
 [#messages](../ROS2迁移交接文档.md#messages)）不足以表达 `episode` 关联；但**无需破坏旧 ABI**——应**新增**版本化配套
 事件 / 话题，原消息**不改字段顺序**。本 ADR 记录该边界（**不静默**改 ABI）。
 
@@ -75,7 +75,7 @@ ROS 2 `transient_local` vs `volatile` 投递语义；以及既有 harness 桩环
 
 - **维持旧式（无任务门 / 无寿命 / 不复位 / 固定 capture 优先）** —— 被否：即 R-021 缺口（跨回合污染）。
 - **直接扩冻结 9 消息（加 `episode` 字段）** —— 被否：违反契约 [#messages](../ROS2迁移交接文档.md#messages) 字段冻结；
-  [X-04](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-04) 明确「无需破坏旧 ABI，替代为新增配套事件」。
+  [X-04](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-04) 明确「无需破坏旧 ABI，替代为新增配套事件」。
 - **把 `episode` 挤进 `reason` 字符串 / 给 `capture_hit` 追加标签** —— 被否：`capture_hit` 必须**恰为** `CAPTURE_NET`；
   字符串化 `reason` 令协议脆弱。
 - **为 jam 统一新增带 `ep` 的配套事件** —— 被否：会改变 R-018 `jam_confirm` 值（`JAM_*`）口径、破坏已验收 R-018；

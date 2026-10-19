@@ -5,7 +5,7 @@ accepted
 
 ## 适用关系（S-10 校准）
 
-> 本节由结构评审 [S-10](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-10) 正式化（原 S-09 顶部注并入本节，**不**重复堆叠）；口径见 [ADR-0066](./0066-decision-applicability-and-reference-discipline.md)。本 ADR **历史正文不改**（演进不抹除），下游**只链接现适用**决策。
+> 本节由结构评审 [S-10](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-10) 正式化（原 S-09 顶部注并入本节，**不**重复堆叠）；口径见 [ADR-0066](./0066-decision-applicability-and-reference-discipline.md)。本 ADR **历史正文不改**（演进不抹除），下游**只链接现适用**决策。
 
 - **适用范围（结论仍现行）**：「PX4 本体 = `toolchain/` 外部依赖，**不入 colcon、不入 git**；`px4_msgs` 内联 `src/`」的分工**仍然现行有效**。
 - **适用范围（版本）**：本 ADR 正文所记 uXRCE-DDS Agent `v2.4.2` 为 **P0 当时适用值**；**现行适用版本为 `v2.4.3`**（对系统 Fast DDS 2.14 / fastcdr 2.2 构建，与 ROS 2 Jazzy **同源**；`v2.4.2` 自建 DDS 2.11 跨版本不互通）。

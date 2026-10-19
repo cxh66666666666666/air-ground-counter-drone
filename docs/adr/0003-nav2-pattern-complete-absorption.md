@@ -16,7 +16,7 @@ accepted
 
 ## 适用关系（S-04 校准）
 
-> 本节由结构评审 [S-04](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-04) 校准；口径见 [ADR-0060](./0060-nav2-absorption-applicability-and-command-source-trimming.md)。**下游只链接现行适用**的决策。
+> 本节由结构评审 [S-04](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-04) 校准；口径见 [ADR-0060](./0060-nav2-absorption-applicability-and-command-source-trimming.md)。**下游只链接现行适用**的决策。
 
 - **范围分工**：本条定**进程 / 架构层范围**（"模式全覆盖·进程按域选用"）；[ADR-0008](./0008-nav2-paradigm-absorption-as-code-principle.md) 定**代码层怎么吸收**（W1–W6 吸收矩阵）。二者互补，ADR-0008 在本条基础上补充代码层落法。
 - **在线角色归 [ADR-0004](./0004-rl-primary-controller-nav2-safety-layer.md)**：本条正文早期「地面域真跑 Nav2 本体（costmap、全局/局部 planner、controller、行为树）」中的**在线主控角色**已由 ADR-0004 取代——RL **直接出 `cmd_vel`** 为地面主控（c2），Nav2 planner/controller 降为**离线对照基线**；W6 的「行为树」在线候选已决议为**自研确定性 C++ 状态机**（**吸收**其模式，**不引入** `bt_navigator`，见契约 [已决事项](../ROS2迁移交接文档.md#decisions)）。故本条该句**仅**在"进程层真跑 Nav2 组件"意义上继续适用。

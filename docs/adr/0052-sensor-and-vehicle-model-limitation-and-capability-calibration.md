@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-037（传感器/车体模型）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-037)）指出，
+评审风险 **R-037（传感器/车体模型）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-037)）指出，
 **「视觉上像真实平台」不等于「相同制动/转向能力」**，且地面安全结论被**未声明的模型限制**限定：
 
 - **安全层用单水平 scan**：[`agc_car.sdf.xacro`](../../src/agc_sim/models/agc_car/agc_car.sdf.xacro) 的
@@ -174,7 +174,7 @@ j 脚本卫生。证据落
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-037)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-037)
 - 规格：[fix-lifecycle-control-height-numeric-r34-r38 spec](../../.trae/specs/fix-lifecycle-control-height-numeric-r34-r38/spec.md)（R-037）
 - Nav2 参照：`nav2_collision_monitor` 的 **zone vs footprint**（`polygon.hpp`）、**`velocity_polygon` 子区**、
   **`source` 覆盖声明**（`scan` 无高度带 vs `pointcloud` 的 `min_height`/`max_height`）、**`min_points`**、

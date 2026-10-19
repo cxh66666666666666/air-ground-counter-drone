@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-结构评审 [S-12](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-12)（**外部资产与发布元数据**，中·挑战）指出：
+结构评审 [S-12](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-12)（**外部资产与发布元数据**，中·挑战）指出：
 [`agc_car.sdf.xacro`](../../src/agc_sim/models/agc_car/agc_car.sdf.xacro#L5) 仅在**注释**声明 5 个 mesh 取自
 Gazebo Fuel `Clearpath Robotics Husky A200`（自称 owner OpenRobotics、`CC0 v1.0`）；
 [`meshes/`](../../src/agc_sim/models/agc_car/meshes) 目录**无** `LICENSE` / `NOTICE` / 来源版本 / 文件哈希；
@@ -85,7 +85,7 @@ Gazebo Fuel `Clearpath Robotics Husky A200`（自称 owner OpenRobotics、`CC0 v
 
 ## 参考
 
-- 评审：[20-结构](../../docs/temp/agc-review-2026-10-14/20-结构.md#s-12)（外部资产与发布元数据）
+- 评审：[20-结构](../../docs/reviews/agc-review-2026-10-14/20-结构.md#s-12)（外部资产与发布元数据）
 - 规格：[fix-structure-toolchain-root-asset-provenance-s11-s12 spec](../../.trae/specs/fix-structure-toolchain-root-asset-provenance-s11-s12/spec.md)
 - 前序：[ADR-0021](0021-ground-safety-thresholds-and-platform-recalibration.md#third-party-license-note)（换装 / 许可适用关系注）/
   [ADR-0065](0065-toolchain-rebuildable-pin-manifest.md)（工具链 pin 清单）/

@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-040（地图身份）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-040)）指出，
+评审风险 **R-040（地图身份）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-040)）指出，
 [`map_adapter.cpp`](../../src/agc_perception/src/map_adapter.cpp) 的 `/agc/map/version_hash` **仅**由
 `hashBytes(data)`（对栅格 `data` 字节串做 FNV-1a）生成，**不含** `frame_id` / `resolution` / `width` /
 `height` / `origin` / **场景身份**：
@@ -142,14 +142,14 @@ accepted
 - **代价 / 限制**：内容身份 hash 的字节序依赖**同机同架构**（本项目全链满足；跨架构须复核）；`rebuild()` 每次
   候选都做一次完整栅格化（较分箱略贵，但本项目地图规模小、可接受）。
 - **未决**：若未来引入**跨架构**回放 / 异构节点，需将 double 字节序显式规范化为固定（如强制 little-endian
-  `static_cast`）或改用带版本的规范化文本——本批不做，按需另议。[R-040](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-040)
-  属 [00-总览](../../docs/temp/agc-review-2026-10-14/00-总览.md#roadmap) 的「可延后但需登记」层，**发布 / 干净重建前
+  `static_cast`）或改用带版本的规范化文本——本批不做，按需另议。[R-040](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-040)
+  属 [00-总览](../../docs/reviews/agc-review-2026-10-14/00-总览.md#roadmap) 的「可延后但需登记」层，**发布 / 干净重建前
   必须完成**。
 - 与旧树：**只读**对齐**行为事实**（WHAT），**不**复制旧代码 / 资产（HOW）。
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-040)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-040)
 - 规格：[fix-ground-odom-map-identity-goal-r39-r41 spec](../../.trae/specs/fix-ground-odom-map-identity-goal-r39-r41/spec.md)（R-040）
 - 契约：[#namespace](../ROS2迁移交接文档.md#namespace) / [#execution-port](../ROS2迁移交接文档.md#execution-port) /
   [#params](../ROS2迁移交接文档.md#params) / [#messages](../ROS2迁移交接文档.md#messages) /

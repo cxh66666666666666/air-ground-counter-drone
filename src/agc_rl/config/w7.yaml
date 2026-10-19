@@ -1,0 +1,20 @@
+# agc_rl · W7 平台参数（W7-a）—— **单一来源**（契约 #params；spec R6）。
+#
+# 由 W7 训练 / 评估 runner（`scripts/w7_episode_runner.py`）与 env 适配层（`agc_rl/env.py`）读取；
+# **不**由 ROS 节点覆写。共享的 obs / 控制 / 寿命参数（`num_sectors` / `lidar_max_range` /
+# `pose_norm_m` / `track_norm_m` / `control.*` / `input_timeout.*`）**不**在此重复 —— 以
+# `config/rl.yaml`（agent 与 env **共用**）为唯一真源，避免两处取值漂移。
+w7:
+  # 观测版本（spec R2）：checkpoint 元数据据此区分；旧版本永久保留、可回放。
+  obs_version: 1
+  # 步进模型（R1/R3）：每 step 推进的**仿真秒**（异步实时，复用现栈）。
+  control_dt_s: 0.1
+  # 训练 horizon（step 数；0 = 不设，交由任务预算 / 墙钟看门狗）→ truncated 语义。
+  max_steps: 0
+  # episode 墙钟看门狗（秒；[ADR-0039](../../docs/adr/0039-time-budget-kinds-and-rtf-record.md) 的
+  # `episode_wall_watchdog` 口径；超时判 infra、**不算成功**）。
+  wall_watchdog_s: 150.0
+  # 训练视图（R3 噪声流）：观测噪声 σ（0 = 关；由 `sensor` 流驱动）。
+  obs_noise_sigma: 0.0
+  # 训练视图（R3 spawn 流）：spawn 随机化开关（false = 用场景固定出生位；由 launch `spawn_randomize` 透传）。
+  spawn_randomize: true

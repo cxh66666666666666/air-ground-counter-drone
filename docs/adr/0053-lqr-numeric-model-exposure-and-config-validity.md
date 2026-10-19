@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-038（数值模型与配置边界）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-038)）指出，
+评审风险 **R-038（数值模型与配置边界）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-038)）指出，
 共享 LQR 的**模型 / 收敛假设未暴露**，配置错误可**静默变成控制错误**：
 
 - [`lqr_controller.cpp`](../../src/agc_control/src/lqr_controller.cpp) 连续双积分 `A=[[0,I],[0,0]]`（**幂零**）、`B=[[0],[I]]`；
@@ -155,7 +155,7 @@ ground 映射适用性标注 / 可达性对拍、安全层平行数组长度一�
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-038)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-038)
 - 规格：[fix-lifecycle-control-height-numeric-r34-r38 spec](../../.trae/specs/fix-lifecycle-control-height-numeric-r34-r38/spec.md)（R-038）
 - 契约：[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints) / [#execution-port](../ROS2迁移交接文档.md#execution-port) /
   [#messages](../ROS2迁移交接文档.md#messages)

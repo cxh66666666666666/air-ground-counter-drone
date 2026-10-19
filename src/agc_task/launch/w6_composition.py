@@ -237,12 +237,15 @@ def load_scene(task_share, perc_share, sim_share, scene, seed, token=None):
     }
 
 
-def compose_params(base, sc, backend, seed, own_uav=(0.0, 0.0), geometry=None):
+def compose_params(base, sc, backend, seed, own_uav=(0.0, 0.0), geometry=None,
+                   spawn_randomize=None):
     """合并参数（base + 场景覆盖）并按 backend 注入运行模式。
 
     lightweight：`task_manager.air_present=False`（无空中域，相位复位门禁 C5 不适用，R-001）。
     full：`task_manager.air_present=True` + `scenario_reset.own_uav_present/x/y`（己方机在场 + 出生净空校验透传）。
     seed 经 launch 单一覆盖（run_logger 记录 + scenario_reset 生成 spawn，C7 可复现）。
+    `spawn_randomize`（W7-a · R3）：`None` = 不改（沿用 base / 场景值）；显式 `True/False` = 覆盖——
+    训练视图按 seed 随机化出生位（spawn 流），缺省 `None` → 既有 W6 行为不变。
     S-06：`scenario_reset` 障碍清单 / 作业区边界由**单一几何真源**注入（w6_base 不再硬编码几何）。
     """
     merged = {node: dict(sec.get('ros__parameters', {})) for node, sec in base.items()}
@@ -260,6 +263,9 @@ def compose_params(base, sc, backend, seed, own_uav=(0.0, 0.0), geometry=None):
         merged['scenario_reset']['own_uav_y'] = own_uav[1]
     merged['run_logger']['seed'] = seed
     merged['scenario_reset']['spawn_seed'] = seed
+    # W7-a（R3）：训练视图按 seed 随机化出生位（显式覆盖；缺省 None → 沿用 base / 场景值）。
+    if spawn_randomize is not None:
+        merged['scenario_reset']['spawn_randomize'] = bool(spawn_randomize)
     # S-06：静态障碍清单 + 作业区边界由**真源**派生注入（物理世界为 static 时注入 pole_*）。
     if geometry is not None:
         merged['scenario_reset']['obstacle_names'] = geometry_ids(geometry)

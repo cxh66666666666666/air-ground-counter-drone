@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-032（C10 冻结边界）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-032)）指出：
+评审风险 **R-032（C10 冻结边界）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-032)）指出：
 [`standoff_follower`](../../src/agc_air/src/standoff_follower.cpp) 在目标过期时**正确清零 hold 前馈**，
 但其**下游** [`trajectory_tracker`](../../src/agc_air/src/trajectory_tracker.cpp) 的失效保护**不封闭**：
 
@@ -139,7 +139,7 @@ targets / rl_offset，订阅 `/fmu/in/trajectory_setpoint` 重建**有效参考*
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-032)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-032)
 - 规格：[fix-runner-green-freeze-uav-safety-r31-r33 spec](../../.trae/specs/fix-runner-green-freeze-uav-safety-r31-r33/spec.md)（R-032）
 - Nav2 参照：`nav2_behaviors/plugins/wait.cpp`（recovery / hold）；`nav2_collision_monitor`
   （`source_timeout` + `ActionType`）；`nav2_lifecycle_manager`（bond 看门狗）

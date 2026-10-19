@@ -68,6 +68,12 @@ def _compose(context, *args, **kwargs):
     gz_args = LaunchConfiguration('gz_args')
 
     backend = LaunchConfiguration('backend').perform(context)
+    # W7-a（R5/R6）：命令源单一选择由本入口透传至 ground_bringup——
+    #   rl（RL 主控，默认）| baseline（Navfn + 自研 LQR 离线对照基线）| train（W7 外部训练/评估适配层作命令源）。
+    command_source = LaunchConfiguration('command_source').perform(context)
+    # W7-a（R3）：训练视图开关——显式设置时按 seed 随机化出生位（spawn 流）；缺省 None 不改既有行为。
+    _sr = LaunchConfiguration('spawn_randomize').perform(context)
+    spawn_randomize = None if _sr in (None, '', 'None') else (str(_sr).lower() in ('1', 'true', 'yes'))
     if backend not in BACKENDS:
         raise RuntimeError(
             '未知 backend: %s（可用：%s）→ 拒绝运行' % (backend, list(BACKENDS)))
@@ -79,7 +85,7 @@ def _compose(context, *args, **kwargs):
     # ---------------- backend:=lightweight ----------------
     if backend == 'lightweight':
         merged = compose_params(info['base'], info['sc'], backend, seed,
-                                geometry=info['geometry'])
+                                geometry=info['geometry'], spawn_randomize=spawn_randomize)
         tmp = write_temp_params(merged, backend, scene, seed)
         asserts = assertions(scene, merged, info)
         manifest_path = write_manifest(build_manifest(backend, info, merged, asserts),
@@ -129,7 +135,7 @@ def _compose(context, *args, **kwargs):
     agent1_port = LaunchConfiguration('agent1_port').perform(context)
 
     merged = compose_params(info['base'], info['sc'], backend, seed, (own_uav_x, own_uav_y),
-                            geometry=info['geometry'])
+                            geometry=info['geometry'], spawn_randomize=spawn_randomize)
     tmp = write_temp_params(merged, backend, scene, seed)
 
     # R-026：空中链路节点参数 = air.yaml 基参 + scenarios.yaml 场景覆盖**合并后注入**
@@ -213,7 +219,8 @@ def _compose(context, *args, **kwargs):
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(ground_share, 'launch', 'ground_bringup.launch.py')),
-            launch_arguments={'use_sim_time': use_sim_time, 'command_source': 'rl'}.items()),
+            launch_arguments={'use_sim_time': use_sim_time,
+                              'command_source': command_source}.items()),
         # 两个 uXRCE-DDS Agent（实例各一，端口独立）
         ExecuteProcess(cmd=[agent_bin, 'udp4', '-p', agent0_port], output='screen'),
         ExecuteProcess(cmd=[agent_bin, 'udp4', '-p', agent1_port], output='screen'),
@@ -277,6 +284,15 @@ def generate_launch_description():
         description='场景 id（见 config/scenarios.yaml）'))
     ld.add_action(DeclareLaunchArgument('seed', default_value='0',
                                         description='episode 种子（run_logger 记录 + spawn 生成）'))
+    # W7-a（R5/R6）：命令源单一选择（透传 ground_bringup）——
+    #   rl | baseline（Navfn + 自研 LQR 离线对照基线）| train（W7 外部适配层作命令源，仅 lightweight）。
+    ld.add_action(DeclareLaunchArgument(
+        'command_source', default_value='rl',
+        description='命令源（互斥）：rl（RL 主控）| baseline（离线对照基线）| train（W7 外部适配层）'))
+    # W7-a（R3）：训练视图——按 seed 随机化出生位；缺省空（不改既有 W6 行为）。
+    ld.add_action(DeclareLaunchArgument(
+        'spawn_randomize', default_value='',
+        description='W7 训练视图：spawn 随机化开关（空=不改既有行为；true/false=显式覆盖）'))
     ld.add_action(DeclareLaunchArgument('use_sim_time', default_value='true'))
     ld.add_action(DeclareLaunchArgument(
         'gz_args', default_value=['-r -v 3 ', world_file],

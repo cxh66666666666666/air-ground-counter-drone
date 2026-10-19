@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-030（文档与产物矛盾）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-030)）指出：
+评审风险 **R-030（文档与产物矛盾）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-030)）指出：
 resetfail（非法 spawn → 净空不足 → 复位重试耗尽）验收的**声明**与其**所指向证据**相反，不能据此背书
 契约 C9（[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints)）。本 ADR 对**据实登记**与
 **唯一新 run 重做**做决定，**不**回退任何已验收组件，**不**改契约冻结 9 消息 ABI，**不**新增第二 ROS 命令者。
@@ -39,8 +39,8 @@ W6 spec `.trae/specs/w6-task-eval/tasks.md` 的 **Task 7.3** 声明「非法 spa
   3. `experiments/w6-task-eval/20261014-w6-full-s02/…/full_linear.json`
   4. `experiments/w6-task-eval/20261014-w6-full-s03/…/full_maneuver.json`
   5. `experiments/w6-task-eval/20261014-w6-jam-0/metrics/jam.json`
-  以上引用分布在 [10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-030) 与
-  [00-总览](../../docs/temp/agc-review-2026-10-14/00-总览.md#judgment)。
+  以上引用分布在 [10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-030) 与
+  [00-总览](../../docs/reviews/agc-review-2026-10-14/00-总览.md#judgment)。
 
 分类：**事实错误与证据完整性事故**。原件已不可恢复，问题从「保全并标注矛盾」转为「**据实登记 + 唯一新 run 重做**」。
 
@@ -106,7 +106,7 @@ config 至独立 run 目录 → 自检 a…h。产物落
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-030) / [00-总览](../../docs/temp/agc-review-2026-10-14/00-总览.md#judgment)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-030) / [00-总览](../../docs/reviews/agc-review-2026-10-14/00-总览.md#judgment)
 - 规格：[R-030 Requirement](../../.trae/specs/fix-scenario-axis-metrics-identity-r26-r30/spec.md#requirement-矛盾原件登记与唯一新-run-重做r-030)
 - 契约：[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints)（C9 必报指标）/ [#params](../ROS2迁移交接文档.md#params)（单一注入）
 - 前序：[ADR-0044](0044-unique-run-identity-and-reproducible-evidence.md)（唯一 run 身份）/ [ADR-0043](0043-episode-window-metrics-and-valid-sample-mask.md)（episode 窗口统计）

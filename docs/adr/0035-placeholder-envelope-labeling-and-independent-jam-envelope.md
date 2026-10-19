@@ -6,7 +6,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-020（占位包络物理含义）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-020)）指出
+评审风险 **R-020（占位包络物理含义）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-020)）指出
 `capture_adjudicator`（[源码](../../src/agc_task/src/capture_adjudicator.cpp)）现式存在三处失真：
 
 1. **高度未计车体**：旧式 `h = target.z − launcher_h`（**未减 `car.z`**）——改变地形 / 车体高度即造成

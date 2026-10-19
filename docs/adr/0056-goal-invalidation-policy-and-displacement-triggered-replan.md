@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-041（目标失效与重规划抖动）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-041)）指出两处病灶：
+评审风险 **R-041（目标失效与重规划抖动）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-041)）指出两处病灶：
 
 - [`task_manager.cpp`](../../src/agc_task/src/task_manager.cpp) 的 `publishGoal()`：`goal_follow_target` 为真且
   `targetFresh()` 为假时，**仍发送新时间戳**的固定 `goal_x_/goal_y_`——**不是**最后有效目标、**也不**表达失效；
@@ -185,7 +185,7 @@ Nav2 的**目标变化触发重规划**与**位姿 / 位移阈值容差**成功�
 
 ## 参考
 
-- 评审原文：[10-风险#r-041](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-041)。
+- 评审原文：[10-风险#r-041](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-041)。
 - 契约真源：[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints)、[#execution-port](../ROS2迁移交接文档.md#execution-port)、
   [#params](../ROS2迁移交接文档.md#params)、[#messages](../ROS2迁移交接文档.md#messages)。
 - 前序：[ADR-0027](./0027-baseline-path-binding-and-replan-failstop.md)（路径绑定与 fail-stop）、

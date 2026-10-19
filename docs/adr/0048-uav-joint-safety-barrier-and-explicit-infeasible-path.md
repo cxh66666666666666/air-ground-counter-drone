@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-033（UAV 自保证明）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-033)）指出
+评审风险 **R-033（UAV 自保证明）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-033)）指出
 [`safety_shield`](../../src/agc_air/src/safety_shield.cpp) 的**安全参考 ≠ 安全轨迹**：
 
 - **逐个障碍推出参考点**，**再**按目标间距推出 → 后投影**可重新落入前约束**（投影**不可交换**）；
@@ -153,7 +153,7 @@ QP / CBF（列为后续更优路线）。
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-033)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-033)
 - 规格：[fix-runner-green-freeze-uav-safety-r31-r33 spec](../../.trae/specs/fix-runner-green-freeze-uav-safety-r31-r33/spec.md)（R-033）
 - Nav2 参照：`nav2_collision_monitor` 的 `velocity_polygon.hpp`（速度相关子多边形）/ `types.hpp`
   （`ActionType` 显式安全动作）/ `collision_detector_node.hpp`（`source_timeout`）；

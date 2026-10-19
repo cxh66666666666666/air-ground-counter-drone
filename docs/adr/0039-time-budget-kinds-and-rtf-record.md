@@ -6,7 +6,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-024（三种时间口径）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-024)）指出系统内存在**三处互不对应**的计时：
+评审风险 **R-024（三种时间口径）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-024)）指出系统内存在**三处互不对应**的计时：
 
 1. **FSM 超时（`mission_sim_budget`）**：[`task_manager.cpp`](../../src/agc_task/src/task_manager.cpp) 的 C4 用
    `(now() − start_time_) > t_max_s`，`now()` 为 **ROS 仿真时钟**（`use_sim_time:=true`，来自 `/clock`）。

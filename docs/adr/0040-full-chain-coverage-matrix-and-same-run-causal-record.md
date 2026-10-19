@@ -8,17 +8,17 @@ accepted
 
 ## 背景
 
-评审风险 **R-025（验收整链范围）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-025)）指出：批量入口
+评审风险 **R-025（验收整链范围）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-025)）指出：批量入口
 [`episode_runner.py`](../../scripts/episode_runner.py) 运行的是**轻量栈**（
-[`w6_task_eval.launch.py`](../../src/agc_task/launch/w6_task_eval.launch.py) = `m0_skeleton` + `capture_adjudicator` +
+[`w6_task_eval.launch.py`](../../src/agc_task/launch/w6.launch.py) = `m0_skeleton` + `capture_adjudicator` +
 `jammer`，**无** PX4 / 空中链路），却把「期望终态匹配」直接呈现为整链完成；既有整链产物（s02/s03
 的 [`full_linear.json`](../../experiments/w6-task-eval/20261014-w6-full-s02/metrics/full_linear.json) /
 `full_maneuver.json`）只含运动分类 / armed / nav_state（`jam=null`），**缺** `start OK` / `release_control` /
 `CAPTURE` / 真实终态。后果：**「轻量 PASS」可能被误读为「双 PX4 整链 / C3 GUI 验收」**；基准成功率可能来自
 更容易的静态真值目标。
 
-相关挑战：**X-02**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-02)，挑战 C3「每份实证都 GUI」的范围）；
-**X-04**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#x-04)，挑战冻结接口禁止任何语义演进）。
+相关挑战：**X-02**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-02)，挑战 C3「每份实证都 GUI」的范围）；
+**X-04**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#x-04)，挑战冻结接口禁止任何语义演进）。
 
 契约真源：[#hard-constraints](../ROS2迁移交接文档.md#hard-constraints) **C3**（实证 / 验收非无头）、
 [#terminal-semantics](../ROS2迁移交接文档.md#terminal-semantics)、[#messages](../ROS2迁移交接文档.md#messages)（9 消息 ABI 不得变更）、

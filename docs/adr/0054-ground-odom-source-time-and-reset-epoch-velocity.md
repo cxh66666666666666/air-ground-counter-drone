@@ -10,7 +10,7 @@ accepted
 
 ## 背景
 
-评审风险 **R-039（地面里程计有效性）**（[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-039)）指出，
+评审风险 **R-039（地面里程计有效性）**（[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-039)）指出，
 [`ground_odom_adapter.cpp`](../../src/agc_perception/src/ground_odom_adapter.cpp) 把**发布时刻**当成**测量时刻**：
 
 - `onGt()` 把**源样本时刻** `t = rclcpp::Time(msg.header.stamp).seconds()` 存入 `history_` 并设 `last_rx_sim_ = t`；
@@ -126,7 +126,7 @@ twist 仍按 ROS 约定表达在 child（车体）系。
 
 ## 参考
 
-- 评审：[10-风险](../../docs/temp/agc-review-2026-10-14/10-风险.md#r-039)
+- 评审：[10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-039)
 - 规格：[fix-ground-odom-map-identity-goal-r39-r41 spec](../../.trae/specs/fix-ground-odom-map-identity-goal-r39-r41/spec.md)（R-039）
 - 契约：[#namespace](../ROS2迁移交接文档.md#namespace) / [#execution-port](../ROS2迁移交接文档.md#execution-port) /
   [#task-gating](../ROS2迁移交接文档.md#task-gating) / [#params](../ROS2迁移交接文档.md#params) /
