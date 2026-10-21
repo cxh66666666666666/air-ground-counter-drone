@@ -24,6 +24,8 @@ setup(
     entry_points={
         'console_scripts': [
             'ground_policy_rl = agc_rl.inference_node:main',
+            # W7-b P2 臂 B：高层（拦截点）决策节点；低层 = ground_baseline（Navfn + 自研 LQR）
+            'agc_rl_high_level = agc_rl.high_level_node:main',
         ],
     },
 )

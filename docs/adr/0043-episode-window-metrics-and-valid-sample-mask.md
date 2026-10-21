@@ -110,6 +110,36 @@ accepted
   后续项；本 ADR 仅落 R-028。
 - 与旧树：**只读**对齐**行为事实**（WHAT），**不**复制旧代码 / 资产（HOW）。
 
+## 修订（W7-b，2026-10-19）：scan 有效样本掩码 `scan_frame_fresh_v2`
+
+**背景**：W7-b 步 1 整链取证发现，本文 (b) 的 `scan_fresh = have_scan_ && (t_now − scan_rx_s_) ≤ scan_max_age_s_` 在 [`run_logger.cpp`](../../src/agc_task/src/run_logger.cpp) 里把 `have_scan_` 实现为「前向锥**有有限回波**」——而 `scan_rx_s_` 本身在**每一帧到达**时更新。于**无障碍物场景**（`s01` / `s08`，前向锥全 `inf`）`have_scan_` 恒 `false` → 实测 `ticks_invalid_scan = ticks_total`（396/396）、`command_attribution.clearance_min_m = null`，与本文 (b)「以**采样新鲜度**关联掩码」的原意相悖：**「前向锥无回波」是有效读数（范围内无遮挡），不是缺数据**。
+
+**修订（**覆盖** (b) 中与 `scan_fresh` 判据相关的表述）**：
+
+1. `scan_fresh` = **收到过 scan 帧**（`have_scan_frame_`）且未超龄；**不再**要求前向锥有有限回波。`have_scan_`（有回波）**仅**用于 `proxy_v1` 的停车裕度 / TTC 分支（无回波 → 不计 `infeasible`、不记 margin）。
+2. 净空：有限回波取最小值；**无回波拍**记入新键 `clearance_no_return_ticks`（范围内无遮挡）。`not_applicable.clearance` 改判「是否有新鲜 scan 帧」——全窗无回波时 `clearance_min_m` 仍为 `null`，但 `clearance` **不再**标 not_applicable（已知 = ∞）。
+3. 口径版本：`definition_version` 增 `scan_valid_mask: "scan_frame_fresh_v2"`；`command_attribution.definition_version` → `raw_effective_v2`（新增 `clearance_ticks` / `clearance_no_return_ticks` / `clearance_at_intervention_ticks` / `clearance_at_intervention_no_return_ticks`）；`metrics_comparability` 显式标注：**无障碍场景的 `ticks_invalid_scan` 由 100% 降为 ~0，与 v1 不可逐值对照**。
+4. **不改**：契约 C9 必报字段语义、冻结 9 消息 ABI、`proxy_v1` 既有字段在有回波场景的数值口径（逐值不变）。
+
+**影响**：有障碍场景（如 `s04`）行为不变（仍 `invalid_scan=0`、净空取有限最小值）；无障碍场景（`s01` / `s08`）整窗由「无效」转为「有效」，`evaluation_applicable` 与 `fire_control_opportunity_rate`（主 DV）不受影响；`min_clearance` 在无障碍场景如实记为「无遮挡」而非 `null`。
+
+## 修订二（W7-b，2026-10-19）：窗口有效样本掩码 `window_valid_v2`（action 档）
+
+**背景**：本文 (b) 原要求 `action_fresh = have_cm_state_ && (t_now − cm_rx_s_) ≤ action_max_age_s_`，即**每一拍都必须有新鲜的 `collision_monitor_state`**。实证（full 整链 `s08`，任务确认在跑、`/agc/ground/cmd_vel` 20 Hz 持续输出）发现：**该话题整窗 0 条**，而 `cmd_vel_raw → cmd_vel`（安全层输出）正常流动。原因：Nav2 的 `state_topic` 是**边沿（动作变化）发布**、**非心跳**——动作长期不变（如整场 `DO_NOTHING`）时一条都不发。于是「逐拍新鲜门」把**有效知识**（"状态一直是 X"）误判为**缺数据**：
+
+- full 无障碍场景 → `ticks_invalid_action = ticks_total`、`ticks_valid = 0`、`window_action_na = true`；
+- 轻量栈有障碍场景（动作在 `SLOWDOWN` / `DO_NOTHING` 间频繁跳变）→ 侥幸命中门限，掩盖了该缺陷（历史 `s04` run 中 `invalid_action` 时 0 / 时 358 即此现象）。
+
+**修订（**覆盖** (b) 中与 action 档相关的表述）**：
+
+1. action 档 = 「**状态已知**（窗口内曾收到过 `collision_monitor_state`，其值即**当前**动作）**且安全层存活**（唯一执行口 `/agc/ground/cmd_vel` = `collision_monitor` 的 `cmd_vel_out` 仍在新鲜窗口内）」；`action_max_age_s_` 的语义随之改为**约束安全层存活证据的年龄**，不再约束 state 话题逐拍新鲜度。
+2. `triggered` / `infeasible` 判定继续用**最近一次** `cm_action_`（边沿语义下该值等于当前动作），`proxy_v1` 计算逻辑不变。
+3. `ticks_invalid_action` **保留**（语义 = 该拍「安全层不存活 / 状态未知」），窗口计数关系 `ticks_valid + ticks_invalid_scan + ticks_invalid_action == ticks_total` **不变**（[`w6_r028_check.py`](../../tests/w6_r028_check.py) 的 `case_b_stale` 断言仍成立）。
+4. 口径版本 `shield_infeasible_rate_window: window_valid_v1 → **window_valid_v2**`；`metrics_comparability` 显式标注：**动作长期不变场景（如无障碍）的 `ticks_invalid_action` 由 100% 降为 ~0，与 `window_valid_v1` 不可逐值对照**。
+5. **不改**契约 C9 必报字段语义、冻结 9 消息 ABI、唯一执行口语义。
+
+**影响**：full / 无障碍场景的窗口由「整窗无效」转为「有效」，`shield_infeasible_rate_window` 的分母（`triggered_ticks`）首次可用；有障碍场景的 `ticks_valid` 可能上升（原先被判无效的「动作未变」拍转为有效），历史 `s04` 数值**不可与本次逐值对照**。
+
 ## 参考
 
 - [10-风险](../../docs/reviews/agc-review-2026-10-14/10-风险.md#r-028)（R-028）

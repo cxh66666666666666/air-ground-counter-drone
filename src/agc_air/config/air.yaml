@@ -23,6 +23,9 @@ px4_adapter:
     world_frame: "world"
     base_frame: "drone/base_link"
     time_offset_alpha: 0.05
+    # W7-b 取证：PX4→ROS 时间映射的**合理性界**（s）。映射结果与 now() 偏差超界（或为负）即判
+    # 不可信 → **拒发该帧并重锚**时间映射（不静默替换）。默认 5.0 s：正常帧龄 ≪ 它，尺度跳变 ≫ 它。
+    stamp_max_skew_s: 5.0
     # 局部原点（R-003）：PX4 odom/setpoint 在**局部系**（相对 EKF 全局原点）；其世界 ENU 位置
     # = 己方机 spawn 位姿。此处为本地默认；launch 以真实 spawn 位姿覆盖（契约 #params 单一来源）。
     origin_pose: "0,0,0.2,0,0,0"
@@ -53,6 +56,15 @@ trajectory_tracker:
     # 控制回路
     setpoint_rate_hz: 50.0
     max_yaw_rate: 2.0
+    # W7-b P1（甲方案，2026-10-19）：观测偏航模式——**P1 自变量 α 的落地**（单一真源，缺省行为不变）。
+    #   velocity（缺省）= 机头随速度方向 → 机体固连前视相机**不保证**对准目标（= 非协同观测臂）；
+    #   target          = 机头/相机**对准目标**（目标须过 target_max_age_s + confidence_min 门）
+    #                     = 空地协同观测臂（由 launch `observe_yaw_mode:=target` 覆盖）。
+    observe_yaw_mode: "velocity"
+    # W7-b（P1 甲）：`observe_yaw_mode=target` 时的**指向信息来源**（真值方位）。本段该臂 = **显式
+    # oracle 指向臂**（ADR-0070(i)：GT 仅评估 / 显式 oracle 臂须标注）；测量仍走真实感知通道。
+    # 仅在该模式下创建订阅——普通运行**不**订阅真值（GT 不进普通控制/观测链）。
+    yaw_aim_gt_topic: "/agc/gt/intruder_uav"
     tracking_ref_timeout_s: 0.5
     # R-032（C10 冻结下游封闭）：目标门 = 源时间窗 + confidence；RL offset 寿命 / 能力限幅。
     target_max_age_s: 0.5            # 目标源时间窗（对齐契约 C10 ref_max_age_s=0.5）

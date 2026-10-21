@@ -18,10 +18,26 @@ task_manager:
     # 运行模式（R-001）：基参按"无空中链路"声明（backend:=lightweight 复用 m0_skeleton）；
     # backend:=full 起真实空中链路，在合并后强制覆写为 true（相位复位门禁 C5 强制）
     air_present: false
+    # W7-b（步 1·甲-1）：空中控制权交接——整链（air_present=true）下，门禁通过后本节点**等「起飞完成
+    # （悬停）」**再显式触发 release_control（takeoff_controller → trajectory_tracker）。悬停判据 =
+    # `/agc/air/odom` 世界 ENU z 相对**起飞前基准**（本 run 最小 z，即地面高度）的爬升量 ≥ air_hover_climb_m
+    # （m），默认 2.3 与 air.yaml 的 takeoff_altitude_m=2.5 / hover_tolerance_m=0.25 对齐（2.5−0.25≈2.25）；
+    # air_hover_timeout_s 为有界等待上限，超时则如实拒绝 start（INFRA_FAILURE）。轻量栈整段跳过。
+    release_service: "/agc/air/release_control"
+    air_odom_topic: "/agc/air/odom"
+    air_hover_climb_m: 2.3
+    # 放宽（2026-10-20）：本机 PX4 EKF/GPS 间歇性慢热 → 18 s 常在起飞完成前超时（实测 infra 偏高）。
+    # 放宽到 45 s 仅**放宽启动容忍窗口**，不改判定阈值（契约 #params）；须配 runner `--start-timeout-s`。
+    air_hover_timeout_s: 45.0
     ground_controller_name: "agc_rl"
     d_track_m: 3.0
     t_dwell_s: 3.0
     t_max_s: 120.0
+    # ADR-0076：tracking_milestone 是否**等价终态**。缺省 true = 既有行为（达驻留即 TRACKING_SUCCESS 锁存）。
+    # capture 场景（`interception_authorized: true`）在场景层覆盖为 false：里程碑只记指标
+    # （`tracking_milestone_met` 仍发布），**不**提前锁存终态 → 保持 GROUND_APPROACH 交火窗口，
+    # 结局交由 capture_adjudicator（CAPTURE_NET）或 t_max TIMEOUT 决定。单一注入，节点不得覆写。
+    tracking_milestone_is_terminal: true
     # R-013：复位后 odom_valid / 地面 odom 新鲜度上限（s）；cmd_vel 回环沿用 0.5（代码常量）
     odom_valid_max_age_s: 1.0
     # R-018：干扰终态只由「已确认事件」驱动（jammer 观测真实 nav_state 持续达标后发布）
@@ -130,6 +146,9 @@ run_logger:
     # action 快照年龄超过此值即该拍无效（陈旧 scan 不按新 odom 重复计数）。单一注入，节点不得覆写。
     scan_max_age_s: 0.5
     action_max_age_s: 0.5
+    # W7-b（ADR-0074）：可见 / 火控机会率的**固定观测时长**（s；自首个 active 拍起，**不**随终态截断）。
+    # 与 `episode_runner --obs-horizon-s`（runner 让 episode 存活到该时长）**须同值**——否则窗口采不满。
+    obs_window_s: 60.0
     # R-029（ADR-0044）：episode 身份话题（std_msgs/Int32，transient_local；非命令者）。
     episode_topic: "/agc/task/episode"
     # R-029：世界模型文件（sha256 记入 config/toolchain_world.json；空 = 不记）。
@@ -142,10 +161,12 @@ capture_adjudicator:
     ground_odom_topic: "/agc/ground/odom"
     target_topic: "/agc/targets"
     hit_topic: "/agc/task/capture_hit"
-    # 捕获作用包络（R-020）：仍用网弹道（闭式占位）模型；与独立干扰包络分离
+    # 可交战（R-020 → W7-b T2/E2）：最小动态火控交战门；与独立干扰包络分离
     envelope_topic: "/agc/task/envelope_in"
     # R-020：捕获证据 / 标注话题（命中 / 越界 / 不可达标注；std_msgs/String）
     capture_evidence_topic: "/agc/task/capture_evidence"
+    # W7-b（T2/E2）：火控事件话题（SHOT_FIRED|SHOT_HIT|SHOT_MISS；std_msgs/String，非命令者）
+    fire_control_topic: "/agc/task/fire_control"
     rate_hz: 20.0
     # 网发射物理模型（可标定暂定值，实跑回填；包络由其可及集推导）
     net_v0_mps: 6.5
@@ -154,20 +175,35 @@ capture_adjudicator:
     net_diameter_m: 1.0
     net_drag: 0.9
     launcher_height_m: 0.0
-    # R-020：模型身份与适用范围标签（占位口径，随证据 / 日志输出）
-    model_id: "ballistic_closed_form"
+    # W7-b（T2/E2）最小动态火控：展开时间 / 冷却 / 飞行超时
+    net_t_exp_s: 0.2
+    fire_cooldown_s: 2.0
+    net_flight_timeout_s: 3.0
+    # ADR-0079（B2）：目标运动估计（时间窗最小二乘 + 静止阈值 + 新息门 + 提前量上限）
+    target_fit_window_s: 1.5
+    target_fit_min_s: 0.75
+    target_fit_min_samples: 8
+    target_static_speed_eps_mps: 0.15
+    target_gate_m: 1.0
+    target_pos_alpha: 0.5
+    target_max_lead_m: 1.5
+    # R-020：模型身份与适用范围标签（W7-b 起为**最小动态火控**口径）
+    model_id: "net_ballistic_frame_v1"
     applicable_min_alt_m: 0.0
     # 上限 ≈ 当前默认点弹道解析顶点 (v0·sinθ)²/(2g) ≈ 2.009 m（占位；未计 t_exp 与网几何）
     applicable_max_alt_m: 2.009
+    # W7-b（T2/E2）：**射击授权**（任务决策，非自动）——缺省 false；按场景 outcome 轴由场景参数覆盖。
+    # 未授权 → 交战门仍发布（envelope_in），但**不开火**（保持「跟踪类」场景结局不变）。
+    interception_authorized: false
     # R-020：独立干扰作用包络（与网弹道模型**不同源**；std_msgs/Bool，供 jammer 门控）
     jam_envelope_topic: "/agc/task/envelope_jam"
     jam_model_id: "behavioral_range_gate"
     jam_envelope_min_alt_m: 0.0
     jam_envelope_max_alt_m: 2.0
     jam_envelope_max_range_m: 1.0
-    # R-021：任务窗口（仅 GROUND_APPROACH 内产出命中）+ 输入寿命 + episode 身份（单一注入，节点不得覆写）
+    # R-021（ADR-0078）：episode 身份**单一来源** = task_manager 的 `/agc/task/episode`（非物理 reset epoch）
     task_state_topic: "/agc/task/state"
-    epoch_topic: "/agc/scenario/reset_epoch"
+    episode_topic: "/agc/task/episode"
     # 配套事件（ep / 时刻 / target；std_msgs/String，非命令者，不改冻结 9 消息 ABI）
     capture_event_topic: "/agc/task/capture_event"
     car_max_age_s: 0.5

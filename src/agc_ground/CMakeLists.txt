@@ -39,10 +39,15 @@ ament_target_dependencies(ground_baseline
   rclcpp rclcpp_lifecycle geometry_msgs nav_msgs agc_msgs
   agc_control pluginlib tf2_ros nav2_core nav2_costmap_2d nav2_util)
 
+# W7-b（T1/E1）：无 shield 对照臂的恒等透传（纯仿真；ADR-0070(d)）
+add_executable(cmd_vel_passthrough src/cmd_vel_passthrough.cpp)
+ament_target_dependencies(cmd_vel_passthrough rclcpp geometry_msgs)
+
 install(TARGETS
   ground_drive_relay
   ground_baseline
   scan_self_filter
+  cmd_vel_passthrough
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY config launch

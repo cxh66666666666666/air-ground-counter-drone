@@ -43,10 +43,14 @@ inline Vector3 frdToFlu(const Vector3 & frd)
 
 /// PX4 姿态四元数（FRD 机体系 → NED 世界系）→ ROS 约定（FLU → ENU）
 /// R_enu←flu = R_enu←ned · R_ned←frd · R_frd←flu
-inline Quaternion px4AttitudeToEnu(const std::array<float, 4> & q_xyzw)
+/// **字段序**：PX4 uORB / px4_msgs 的 `q` 为 Hamilton **[w,x,y,z]**（`VehicleOdometry.q[0]=w`，
+///   ekf2 工具链即按 `q[0]→qw` 解析；见 `msg/VehicleOdometry.msg`「First value NaN if invalid」）。
+///   **不得**按 ROS `geometry_msgs` 的 [x,y,z,w] 解析——否则得到与真值差约 60° 的错误姿态
+///   （W7-b 取证：raw q=[0.877,0.004,0.002,0.480] 正确→ENU yaw 32.7°，按 [x,y,z,w]→89.5°）。
+inline Quaternion px4AttitudeToEnu(const std::array<float, 4> & q_wxyz)
 {
-  const Quaternion q_px4(static_cast<double>(q_xyzw[3]), static_cast<double>(q_xyzw[0]),
-    static_cast<double>(q_xyzw[1]), static_cast<double>(q_xyzw[2]));
+  const Quaternion q_px4(static_cast<double>(q_wxyz[0]), static_cast<double>(q_wxyz[1]),
+    static_cast<double>(q_wxyz[2]), static_cast<double>(q_wxyz[3]));
   // q(ENU←NED)：绕 (1,1,0)/√2 转 π
   const Quaternion q_enu_ned(0.0, M_SQRT1_2, M_SQRT1_2, 0.0);
   // q(FLU←FRD)：绕 x 转 π
@@ -123,8 +127,22 @@ inline bool parseSpawnPositionXyz(const std::string & s, Vector3 & out)
 class Px4TimeMapper
 {
 public:
-  explicit Px4TimeMapper(double alpha = 0.05)
-  : alpha_(alpha) {}
+  /// 偏移跳变判定阈值（µs）：新观测的偏移与当前估计之差超过此值 → 判为**时间源尺度跳变**
+  /// （典型 = uXRCE-DDS 桥时间同步把 PX4 时间戳推到墙上时钟尺度，而 ROS 侧是仿真时钟），
+  /// **直接重锚**而非 EMA 混合——否则旧估计会把新尺度稀释成**离奇时间戳**（实测曾产出
+  /// `sec≈−1.7e9` / `sec≈+8.5e7` 的脏 stamp，令下游年龄门失效）。
+  static constexpr double kReanchorJumpUs = 100000.0;  // 0.1 s
+
+  explicit Px4TimeMapper(double alpha = 0.05, double reanchor_jump_us = kReanchorJumpUs)
+  : alpha_(alpha), reanchor_jump_us_(reanchor_jump_us) {}
+
+  /// 丢弃当前锚定 → 下一帧观测重新锚定。用于 **EKF 复位** / **时钟跳变** / **不可信映射自愈**
+  /// （实测：一次脏映射必须重锚，否则偏移被污染后会持续产出离奇 stamp）。
+  void reset()
+  {
+    valid_ = false;
+    offset_us_ = 0.0;
+  }
 
   /// 观察一对同刻时间（px4 µs 与其对应的 ROS 时刻 µs）
   void observe(std::uint64_t px4_us, std::int64_t ros_us)
@@ -133,6 +151,8 @@ public:
     if (!valid_) {
       offset_us_ = offset;
       valid_ = true;
+    } else if (std::fabs(offset - offset_us_) > reanchor_jump_us_) {
+      offset_us_ = offset;      // 尺度跳变 → **重锚**（不 EMA 混合）
     } else {
       offset_us_ = (1.0 - alpha_) * offset_us_ + alpha_ * offset;
     }
@@ -158,6 +178,7 @@ public:
 
 private:
   double alpha_{0.05};
+  double reanchor_jump_us_{kReanchorJumpUs};
   double offset_us_{0.0};
   bool valid_{false};
 };

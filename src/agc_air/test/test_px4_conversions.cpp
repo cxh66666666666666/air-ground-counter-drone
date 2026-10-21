@@ -30,7 +30,8 @@ TEST(Px4Conversions, FrdToFlu)
 TEST(Px4Conversions, AttitudeIdentityIsLevelFacingNorth)
 {
   // PX4 单位四元数 = 机体 FRD 水平、机头朝北；换到 FLU/ENU 后应仍水平，且机头指向 +y（北）
-  const auto q = agc_air::px4AttitudeToEnu({0.0f, 0.0f, 0.0f, 1.0f});
+  // 字段序 = PX4 Hamilton **[w,x,y,z]**（单位阵 = w=1）
+  const auto q = agc_air::px4AttitudeToEnu({1.0f, 0.0f, 0.0f, 0.0f});
   const Eigen::Matrix3d R = q.toRotationMatrix();
   // 机体系前向 (1,0,0) → 世界系
   const Eigen::Vector3d fwd = R * Eigen::Vector3d::UnitX();
@@ -40,6 +41,18 @@ TEST(Px4Conversions, AttitudeIdentityIsLevelFacingNorth)
   // 机体系上向 (0,0,1) → 世界系应为 +z（上）
   const Eigen::Vector3d up = R * Eigen::Vector3d::UnitZ();
   EXPECT_NEAR(up.z(), 1.0, 1e-9);
+}
+
+TEST(Px4Conversions, AttitudeFieldOrderIsPx4HamiltonWxyz)
+{
+  // W7-b 回归：PX4 q 为 Hamilton **[w,x,y,z]**。取 NED 偏航 58.1° 的纯偏航四元数
+  // （≈ 实测 raw q=[0.877,0.004,0.002,0.480]）→ ENU 偏航应为 90°−58.1°=31.9°。
+  // 若误按 ROS [x,y,z,w] 解析，会得到 ≈90°（正是复现的 ~58° 姿态错误）。
+  const double y = 58.1 * M_PI / 180.0;
+  const auto q = agc_air::px4AttitudeToEnu({static_cast<float>(std::cos(y / 2.0)), 0.0f, 0.0f,
+      static_cast<float>(std::sin(y / 2.0))});
+  // 输入为 float（与 PX4 一致），故容差按度取 1e-3（远小于“字段序错”时的 ~58° 偏差）
+  EXPECT_NEAR(agc_air::yawFromQuaternion(q) * 180.0 / M_PI, 90.0 - 58.1, 1e-3);
 }
 
 TEST(Px4Conversions, YawRoundTrip)
@@ -101,8 +114,8 @@ TEST(Px4Conversions, LocalNedToWorldEnuAppliesOrigin)
 
 TEST(Px4Conversions, VelocityFrameConversionAtNinetyDegreeHeading)
 {
-  // 90° 航向：NED 偏航 0（朝北）的单位四元数 → ENU 下机头即 +y（北）。
-  const auto q = agc_air::px4AttitudeToEnu({0.0f, 0.0f, 0.0f, 1.0f});
+  // 90° 航向：NED 偏航 0（朝北）的单位四元数 → ENU 下机头即 +y（北）。字段序 [w,x,y,z]。
+  const auto q = agc_air::px4AttitudeToEnu({1.0f, 0.0f, 0.0f, 0.0f});
   // 世界 ENU 向北 1 m/s → 机体系前向 x = 1（R-003：twist 在 child frame）
   const Vector3 north_body = agc_air::enuToBodyFlu(q, Vector3(0.0, 1.0, 0.0));
   EXPECT_NEAR(north_body.x(), 1.0, 1e-9);

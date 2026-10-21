@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import (
@@ -22,9 +22,11 @@ from launch.actions import (
     ExecuteProcess,
     IncludeLaunchDescription,
     OpaqueFunction,
+    RegisterEventHandler,
     SetEnvironmentVariable,
     TimerAction,
 )
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -121,6 +123,15 @@ def _generate(context, *args, **kwargs):
              name='standoff_follower', parameters=common, output='screen'),
     ]
 
+    # ADR-0080：manager 启动**前**预热被管节点的 lifecycle 服务连接，避免其阻塞式
+    # `change_state` 在 DDS 发现预热期永久挂起（实测停在 `Configuring takeoff_controller`）。
+    prewarm_bin = os.path.join(
+        get_package_prefix('agc_air'), 'lib', 'agc_air', 'air_lifecycle_prewarm')
+    prewarm = ExecuteProcess(
+        cmd=[prewarm_bin, 'px4_adapter', 'takeoff_controller', 'trajectory_tracker',
+             'standoff_follower'],
+        output='screen')
+
     # lifecycle 编排：**复用 Nav2 `lifecycle_manager`**（ADR-0008 吸收点）。
     # 它先 wait_for_service 等节点就绪，再统一 configure → activate，天然避免"节点未就绪就下发"
     # 与固定延时竞态（原先手写 TimerAction + `ros2 lifecycle set` 重试的做法已废弃）。
@@ -150,7 +161,8 @@ def _generate(context, *args, **kwargs):
         agent,
         TimerAction(period=12.0, actions=[px4]),
         *nodes,
-        lifecycle_manager,
+        prewarm,
+        RegisterEventHandler(OnProcessExit(target_action=prewarm, on_exit=[lifecycle_manager])),
     ]
 
 

@@ -39,7 +39,7 @@
 | **W4** | 感知与融合 | W2 | — | ✅ |
 | **W5** | 地面导航与安全层 | W2·W4 | C6 | ✅ |
 | **W6** | 任务与评估 | W5 | C4·C5·C7·C8·C9 | ✅ |
-| **W7** | RL 平台 | W2-full·W4·W5·W6（已验收证据，[ADR-0069](./adr/0069-w7-entry-and-exit-definition.md)） | — | ☐（后续） |
+| **W7** | RL 平台 | W2-full·W4·W5·W6（已验收证据，[ADR-0069](./adr/0069-w7-entry-and-exit-definition.md)） | — | ◐ 进行中（W7-a ✅；W7-b 的 **P1 已在新终态语义 + [ADR-0078](./adr/0078-capture-event-episode-identity-single-source.md) + [ADR-0079](./adr/0079-b2-fire-control-target-motion-estimation.md) 修复后完成 N=20 判定并成立**，P2 判定 / 消融与 W7-c 未执行，见 [ADR-0071](./adr/0071-w7b-adjudication-record-and-pending-arms.md) / [ADR-0076](./adr/0076-capture-scenario-tracking-milestone-not-terminal.md)） |
 | **W8** | 对照与冻结 | W6·W7 | C1–C10（容差） | ☐（后续） |
 
 ### 依赖图
@@ -133,12 +133,15 @@ W0 ─┬─> W1 ─────────┐
 ### W7 · RL 平台（**后续**，不在本次出口）
 - **目标**：策略、训练 / 评估流水线、论文产线。
 - **前置**：W2-full · W4 · W5 · W6 —— **逐项以已验收 run 证据为准**（每项指向 `run_id` + 验收命题，[ADR-0069](./adr/0069-w7-entry-and-exit-definition.md)）。
-- **分段**：**W7-a** 最小平台（入口前置证据 + obs / action 版本化 + train / eval 协议 + 种子分解 + 单 worker 可重放 + **规则基线可达性**）→ **W7-b** 科研路线（选可证伪命题）→ **W7-c** 扩容（多 worker 隔离）。
+- **分段**：**W7-a** 最小平台（入口前置证据 + obs / action 版本化 + train / eval 协议 + 种子分解 + 单 worker 可重放 + **规则基线可达性**）→ **W7-b** 科研路线（选可证伪命题，[ADR-0070](./adr/0070-w7b-research-propositions-and-rl-role-adjudication.md)）→ **W7-c** 扩容（多 worker 隔离）。
 - **产出**：可复现的训练与评估。
 - **验收（W7-a）**：可信实验平台 —— 同 seed 可复现；train / eval 协议与评估一致；**不含**算法 / 论文（属 W7-b）。
 - **未决**：算法 / 环境 / 指标 / 论文方向 —— 在 W7 spec 内定夺（W7-b）。
-- **进度（2026-10-19）**：**W7-a 已落地** —— T1–T5 + 横切核查完成；证据 `experiments/w7-rl/{20261019-w7-core-final, 20261019-w7-replay-0001, 20261019-w7-baseline-0001}`。W7-b / W7-c **未开始**。
-- **spec**：`.trae/specs/w7-rl/`
+- **进度（2026-10-19）**：**W7-a 已落地** —— T1–T5 + 横切核查完成；证据 `experiments/w7-rl/{20261019-w7-core-final, 20261019-w7-replay-0001, 20261019-w7-baseline-0001}`。**W7-b 进行中** —— 科研裁定 [ADR-0070](./adr/0070-w7b-research-propositions-and-rl-role-adjudication.md) + 规格 `.trae/specs/w7-rl-b/`：**入口前置 E1–E5 已落地并取证**；臂与消融**可运行子集已跑**（基线锚 / P2 两臂 / 消融·安全干预），**P1 协同臂待整链**、确证判定未执行 —— 裁定记录 [ADR-0071](./adr/0071-w7b-adjudication-record-and-pending-arms.md)。W7-c **未开始**。
+  - **补充（2026-10-19 晚）**：整链（`backend:=full`）**步 1「评价可用」已落地** —— 空中控制权交接（`task_manager` 在悬停后调 `/agc/air/release_control`，甲-1）+ `px4_adapter` 姿态四元数字段序修复（[ADR-0072](./adr/0072-px4-attitude-quaternion-field-order-and-full-chain-observation-fix.md)）：full `s08` 同 run 达真实终态 `TRACKING_SUCCESS`、`visibility_rate=0.982`（`run_id w7-rl-b/20261019-w7-rl-b-224947-6509`）。**P1 两臂配对 / 判定仍未执行**；依赖 `/agc/air/odom` 姿态的旧空中证据**须重验**。
+  - **补充（2026-10-20）**：W7-b **步 2–3 推进** —— 依次落地三处前置并各自留痕：臂公平性（非协同臂改固定航迹，[ADR-0073](./adr/0073-p1-arm-fairness-noncoop-fixed-trajectory.md)）、DV 口径（可见 / 火控机会率改**固定观测窗口** `window_fixed_v1`，[ADR-0074](./adr/0074-visibility-metric-fixed-observation-window.md)）、整链 infra 处置（**运行前清场** + infra 重试协议，[ADR-0075](./adr/0075-uxrce-entity-creation-intermittent-failure-and-infra-retry.md)：本机残留孤儿进程使 uXRCE 实体创建 > PX4 硬编码 1 s 预算）。随后 P1 两臂 **CRN 配对 N=20** 已跑（`run_id w7-rl-b/20261020-w7-rl-b-150408-8486`，40 episodes / 1.32 h / infra 0/40），判定 [ADR-0071](./adr/0071-w7b-adjudication-record-and-pending-arms.md)(h) 主 DV 成立（Δ`fire_control_opportunity_rate`=+0.2885、95% CI [+0.202, +0.375]、p=1e-06、n=20）。**但**该批次暴露 capture 场景终态语义缺陷（跟踪里程碑提前锁存 `TRACKING_SUCCESS`，捕获永不发生）→ 已由 [ADR-0076](./adr/0076-capture-scenario-tracking-milestone-not-terminal.md) 修正（`tracking_milestone_is_terminal`，仅 capture 场景）→ **旧批次数值不可作为最终判定**，须在新语义下重跑 N=20 后定论；协同臂为**显式 oracle 指向臂**（适用边界）。W7-c（多 worker）**未开始**；W8 **未开始**。
+  - **补充（2026-10-21）**：**新终态语义下 P1 N=20 重跑完成并判定成立** —— 现行结论 `run_id w7-rl-b/20261021-w7-rl-b-175313-3256`（`backend:=full` / `s08` / seeds 0–19 / 40 episodes / 1.58 h / infra 终态 0/40 / 7 次 infra 重试 / **0 条事件拒收**）；判定产物 `metrics/p1_adjudication.json`，结论见 [ADR-0071](./adr/0071-w7b-adjudication-record-and-pending-arms.md)(h) 最终重跑子节：primary `fire_control_opportunity_rate` 均值配对差 **+0.2988**（95% CI [+0.149, +0.449]、p=5.1e-04、n=20）≥ MDE 0.10 → **成立**；secondary `min_clearance` 不显著（−0.1704、p=0.417，如实登记）。**过程留痕**：① 首个新语义批次 `20261021-w7-rl-b-104120-1456` 暴露启动双复位竞态（4 例共 **41 次 `CAPTURE_NET` 被静默拒收**）→ [ADR-0078](./adr/0078-capture-event-episode-identity-single-source.md) 修复；② 修复后批次暴露 B2 火控目标速度假噪声（静态目标被逐帧差分成 1–2 m/s，预测点偏 1–2.5 m）→ [ADR-0079](./adr/0079-b2-fire-control-target-motion-estimation.md) 修复（时间窗回归 + 静止阈值 + 发射解算门），本批仅剩 2 个非协同超时（固定航迹下几乎无开火机会，属臂行为）。旧批次 `150408` / `104120` / `133724` 数值不得引用。协同臂仍为**显式 oracle 指向臂**；成功率 20/20 vs 18/20 仅作画像。**另（B1 观测饥饿）**：诊断确认为空中 lifecycle 启动期 manager 卡死 + 节点 bond 在 configure 过早计时（`px4_adapter` 失效停机 → `no_pose` 全拒），已由 [ADR-0080](./adr/0080-air-lifecycle-startup-robustness.md) 修复（lifecycle 服务预热 + bond 改在 activate）并红-绿；**感知量程 12 m < 站距上限 15 m** 的几何盲区**已裁定保留为环境边界**（对两臂对称、已计入可见率；不修改参数、不重跑），批次产物 `metrics/perception_health.json` 自动报告 `rmax/no_pose/fov` 占比。W7-b 剩余（P2 判定、协同观测 / 目标预测消融）与 W7-c、W8 **未开始**。
+- **spec**：`.trae/specs/w7-rl/`（W7-a）、`.trae/specs/w7-rl-b/`（W7-b）
 
 ### W8 · 对照与冻结（**后续**，不在本次出口）
 - **目标**：新旧实现同场景、同种子各跑 N 次；出对比报告；ROS1 归档只读。
@@ -179,6 +182,7 @@ W0 ─┬─> W1 ─────────┐
 | 中 | uORB 语义（微秒时间戳、NED/FRD↔ENU、QoS）易错 | W3 内建语义映射测试 |
 | 中 | QoS 默认不兼容（sensor/reliable） | 逐话题标定 profile |
 | 中 | RL 主控与安全层耦合 | 安全层独立可测，接口先行 |
+| 中 | 残留孤儿进程（桥 / tf）占 DDS + shm → uXRCE 实体创建超 PX4 的 1 s 预算 → 整链 infra | 运行前清场 + infra 重试（[ADR-0075](./adr/0075-uxrce-entity-creation-intermittent-failure-and-infra-retry.md)）；速查 [`conventions/整链排障速查.md`](./conventions/整链排障速查.md) |
 | 中 | 时序 / executor 选择致频率数值漂移 | W8 同场景实跑对比，未验证不删旧实现 |
 | 低 | `package.xml` / 依赖声明不完整 | `colcon` 逐包构建定位 |
 

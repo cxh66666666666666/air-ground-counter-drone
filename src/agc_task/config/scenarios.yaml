@@ -79,9 +79,15 @@ scenes:
     expected_reason: CAPTURE_NET
     params:
       scenario_reset: {target_x: 4.5, target_y: 3.0}
-      task_manager: {goal_follow_target: false, goal_x: 4.5, goal_y: 3.0}
+      task_manager: {goal_follow_target: false, goal_x: 4.5, goal_y: 3.0,
+                     # ADR-0076：capture 场景**不**以跟踪里程碑锁存终态——否则捕获裁决的交火窗口
+                     # （GROUND_APPROACH）被提前关闭，`INTERCEPT_CONFIRMED` 永不发生（实测 20/20
+                     # 均提前落 TRACKING_SUCCESS）。里程碑仍记入 `tracking_milestone_met` 供指标使用。
+                     tracking_milestone_is_terminal: false}
       run_logger: {scenario: "s08_static_none_nominal_capture"}
       intruder_driver: {motion: static}
+      # W7-b（T2/E2）：结局轴=capture → **授权射击**（任务决策）；跟踪类场景不授权。
+      capture_adjudicator: {interception_authorized: true}
 
   s09_linear_none_nominal_jam:
     axes: {target_motion: linear, obstacle: none, perception: nominal, outcome: jam}

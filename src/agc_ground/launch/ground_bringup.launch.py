@@ -17,6 +17,11 @@
   * `train`    —— W7-a（R6）：W7 **外部训练 / 评估适配层**（`agc_rl` env / runner）作命令源，独占发布
                   `/agc/ground/cmd_vel_raw`；本链路**不**起 rl / baseline 发布者，仅安全层 + 中继。
 
+安全层开关（`shield`，W7-b T1/E1，[ADR-0070](../../../docs/adr/0070-w7b-research-propositions-and-rl-role-adjudication.md)(d)）：
+  * `true`（缺省）—— 起 Nav2 `collision_monitor`（既有行为不变）；
+  * `false` —— **无 shield 对照臂**（纯仿真，**不**用于部署）：不起安全层，改由 `cmd_vel_passthrough`
+                 把 `cmd_vel_raw` 恒等转发到唯一执行口（仍只一路命令者）。
+
 参数单一来源：`config/ground.yaml`（安全层 / 中继）、`config/costmap.yaml`（分层 costmap，基线自持）、
 `config/baseline.yaml`（基线）、`agc_rl/config/rl.yaml`（RL）（契约 #params）。
 """
@@ -45,6 +50,11 @@ GZ_LIDAR_FRAME = 'agc_car/car/lidar_link/lidar3d'
 def _nodes(context, *args, **kwargs):
     command_source = LaunchConfiguration('command_source').perform(context)
     use_sim_time = LaunchConfiguration('use_sim_time')
+    # W7-b（T1/E1，ADR-0070(d)）：`shield` 单一开关——缺省 true（既有行为不变）。
+    # false = **无 shield 对照臂**（纯仿真，**不**用于部署）：不起 collision_monitor，
+    # 改由 `cmd_vel_passthrough` 把 cmd_vel_raw 恒等转发到唯一执行口。
+    shield_enabled = str(LaunchConfiguration('shield').perform(context)).lower() not in (
+        'false', '0', 'no')
 
     ground_share = get_package_share_directory('agc_ground')
     rl_share = get_package_share_directory('agc_rl')
@@ -81,17 +91,28 @@ def _nodes(context, *args, **kwargs):
             package='agc_ground', executable='scan_self_filter',
             name='scan_self_filter', parameters=common, output='screen',
         ),
+    ]
+
+    # 安全层（有 shield）或恒等透传（无 shield 对照臂）
+    managed = []
+    if shield_enabled:
         # R1：安全层（Nav2 collision_monitor，scan 源 = 自滤后扫描；直接复用 Nav2 组件）
-        Node(
+        actions.append(Node(
             package='nav2_collision_monitor', executable='collision_monitor',
             name='collision_monitor', parameters=common, output='screen',
-        ),
-        # 唯一执行口中继
-        Node(
-            package='agc_ground', executable='ground_drive_relay',
-            name='ground_drive_relay', parameters=common, output='screen',
-        ),
-    ]
+        ))
+        managed.append('collision_monitor')
+    else:
+        actions.append(Node(
+            package='agc_ground', executable='cmd_vel_passthrough',
+            name='cmd_vel_passthrough', parameters=common, output='screen',
+        ))
+
+    # 唯一执行口中继
+    actions.append(Node(
+        package='agc_ground', executable='ground_drive_relay',
+        name='ground_drive_relay', parameters=common, output='screen',
+    ))
 
     if command_source == 'baseline':
         # R8：离线对照基线；自持内建 costmap（参数取 costmap.yaml 的 `costmap:` 段）
@@ -101,12 +122,30 @@ def _nodes(context, *args, **kwargs):
             parameters=[baseline_file, costmap_file, {'use_sim_time': use_sim_time}],
             output='screen',
         ))
-        managed = ['collision_monitor', 'ground_baseline']
+        managed.append('ground_baseline')
     elif command_source == 'train':
         # W7-a（R6）：命令源 = W7 **外部训练 / 评估适配层**（`agc_rl` env / runner，非本图内节点）。
         # 适配层独占发布 `/agc/ground/cmd_vel_raw`；本链路**不**起 rl / baseline 发布者，
         # 仅保留安全层 + 唯一执行口中继——链路语义与 `rl` 一致（安全层仍是唯一 shield，ADR-0004）。
-        managed = ['collision_monitor']
+        pass
+    elif command_source == 'rl_high':
+        # W7-b（P2 臂 B，ADR-0070(b)(f)）：**高层（拦截点）+ 成熟低层**——
+        # 高层节点（`agc_rl`）只出目标点 `/agc/ground/goal_hl`；低层 = `ground_baseline`
+        # （Navfn 规划 + 自研 LQR，[R-012] 准确命名），由它写 `/agc/ground/cmd_vel_raw`。
+        actions.append(IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(rl_share, 'launch', 'rl_inference.launch.py')),
+            launch_arguments={'use_sim_time': use_sim_time, 'mode': 'high_level'}.items(),
+        ))
+        actions.append(Node(
+            package='agc_ground', executable='ground_baseline',
+            name='ground_baseline',
+            parameters=[baseline_file, costmap_file,
+                        {'use_sim_time': use_sim_time,
+                         'goal_topic': '/agc/ground/goal_hl'}],
+            output='screen',
+        ))
+        managed.append('ground_baseline')
     else:
         # W5-b：命令源 = agc_rl 推理节点（include agc_rl 的 launch）。
         # S-04（ADR-0060）：RL 主控**不消费** costmap → **不**起闲置的独立 `nav2_costmap_2d` 进程；
@@ -116,17 +155,17 @@ def _nodes(context, *args, **kwargs):
                 os.path.join(rl_share, 'launch', 'rl_inference.launch.py')),
             launch_arguments={'use_sim_time': use_sim_time}.items(),
         ))
-        managed = ['collision_monitor']
 
     # lifecycle 编排：复用 Nav2 lifecycle_manager 统一 configure→activate（ADR-0008 吸收点）
-    actions.append(Node(
-        package='nav2_lifecycle_manager', executable='lifecycle_manager',
-        name='lifecycle_manager_ground',
-        parameters=[{'use_sim_time': use_sim_time,
-                     'autostart': True,
-                     'node_names': managed}],
-        output='screen',
-    ))
+    if managed:
+        actions.append(Node(
+            package='nav2_lifecycle_manager', executable='lifecycle_manager',
+            name='lifecycle_manager_ground',
+            parameters=[{'use_sim_time': use_sim_time,
+                         'autostart': True,
+                         'node_names': managed}],
+            output='screen',
+        ))
     return actions
 
 
@@ -136,6 +175,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'command_source', default_value='rl',
             description='命令源（互斥）：rl（RL 主控，ADR-0004）| baseline（离线对照基线，R8）'
-                        '| train（W7-a 外部训练 / 评估适配层作命令源）'),
+                        '| train（W7-a 外部训练 / 评估适配层作命令源）'
+                        '| rl_high（W7-b P2 臂 B：高层拦截点 + 成熟低层 Navfn+LQR）'),
+        # W7-b（T1/E1）：安全层开关——缺省 true（既有行为不变）；false = 无 shield 对照臂（纯仿真）。
+        DeclareLaunchArgument(
+            'shield', default_value='true',
+            description='安全层开关：true=起 collision_monitor（默认）；'
+                        'false=无 shield 对照臂（恒等透传，纯仿真，不用于部署）'),
         OpaqueFunction(function=_nodes),
     ])

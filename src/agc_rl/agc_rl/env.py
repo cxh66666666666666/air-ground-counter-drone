@@ -35,7 +35,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from rclpy.executors import SingleThreadedExecutor
 
-from agc_msgs.msg import AgcTaskState
+from agc_msgs.msg import AgcTaskState, TargetTrackArray
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from nav_msgs.msg import Odometry
 from rosgraph_msgs.msg import Clock
@@ -63,9 +63,11 @@ _ENV_DEFAULTS = {
     'clock_topic': '/clock', 'gt_car_topic': '/agc/gt/agc_car',
     'cmd_raw_topic': '/agc/ground/cmd_vel_raw', 'start_service': '/agc/task/start',
     'num_sectors': 12, 'lidar_max_range': 10.0, 'pose_norm_m': 10.0, 'track_norm_m': 5.0,
+    # W7-b（T4/E4）：v2 obs 的追加归一（目标相对速度 / 观测年龄）
+    'targets_topic': '/agc/targets', 'rel_speed_norm_mps': 2.0, 'obs_age_norm_s': 0.5,
     'input_timeout': {'odom_s': 0.5, 'scan_s': 0.5, 'goal_s': 2.0, 'task_auth_s': 2.0},
 }
-_W7_DEFAULTS = {'obs_version': 1, 'control_dt_s': 0.1, 'max_steps': 0,
+_W7_DEFAULTS = {'obs_version': 2, 'control_dt_s': 0.1, 'max_steps': 0,
                 'wall_watchdog_s': 150.0, 'obs_noise_sigma': 0.0, 'spawn_randomize': False}
 
 
@@ -108,6 +110,8 @@ class _EnvNode(Node):
         self.create_subscription(PoseStamped, cfg['goal_topic'], self._on_goal, 20)
         self.create_subscription(AgcTaskState, cfg['state_topic'], self._on_state, 20)
         self.create_subscription(Clock, cfg['clock_topic'], self._on_clock, 10)
+        # W7-b（T4/E4，F-04）：目标轨（bearing / 相对速度 / 观测年龄）——v2 obs 用
+        self.create_subscription(TargetTrackArray, cfg['targets_topic'], self._on_target, 20)
         self.gt_sub = None
         if cfg.get('gt_car_topic'):
             self.gt_sub = self.create_subscription(
@@ -122,6 +126,11 @@ class _EnvNode(Node):
         self.scan_valid = False
         self.sim_s = None
         self.gt = None
+        self.tgt = None            # (x, y, z) 最近目标位姿
+        self.tgt_stamp_s = None    # 目标 header.stamp（仿真秒；最后真实观测时刻）
+        self.tgt_vel = (0.0, 0.0)  # 目标水平速度（twist；缺则 0）
+        self.tgt_rx = None         # 目标到达时刻（单调钟；无 sim 时间时的年龄回退）
+        self.car_vel = (0.0, 0.0)  # 车体水平速度（odom twist）
         self._cmd = (0.0, 0.0)
         self._t_odom = None
         self._t_scan = None
@@ -134,6 +143,7 @@ class _EnvNode(Node):
         self.x = m.pose.pose.position.x
         self.y = m.pose.pose.position.y
         self.yaw = _yaw_from_quat(m.pose.pose.orientation)
+        self.car_vel = (m.twist.twist.linear.x, m.twist.twist.linear.y)
         self._t_odom = time.monotonic()
 
     def _on_scan(self, m):
@@ -159,6 +169,15 @@ class _EnvNode(Node):
 
     def _on_gt(self, m):
         self.gt = (m.pose.position.x, m.pose.position.y, m.pose.position.z)
+
+    def _on_target(self, m):
+        if not m.tracks:
+            return
+        t = m.tracks[0]
+        self.tgt = (t.pose.pose.position.x, t.pose.pose.position.y, t.pose.pose.position.z)
+        self.tgt_stamp_s = t.header.stamp.sec + t.header.stamp.nanosec * 1e-9
+        self.tgt_vel = (t.twist.twist.linear.x, t.twist.twist.linear.y)
+        self.tgt_rx = time.monotonic()
 
     def _on_timer(self):
         cmd = TwistStamped()
@@ -250,9 +269,27 @@ class GroundAgcEnv:
         dx = n.goal_x - n.x
         dy = n.goal_y - n.y
         dist = math.hypot(dx, dy)
+        extra = {}
+        if int(self.obs_version) >= 2:
+            # W7-b（T4/E4，F-04）：目标 bearing（车体系）/ 相对速度 / 观测年龄
+            if n.tgt is not None:
+                dx_t = n.tgt[0] - n.x
+                dy_t = n.tgt[1] - n.y
+                bearing = math.atan2(dy_t, dx_t) - n.yaw
+                bearing = math.atan2(math.sin(bearing), math.cos(bearing))
+                rel_speed = math.hypot(n.tgt_vel[0] - n.car_vel[0],
+                                       n.tgt_vel[1] - n.car_vel[1])
+                if n.tgt_stamp_s is not None and n.sim_s is not None:
+                    age = max(n.sim_s - n.tgt_stamp_s, 0.0)
+                else:
+                    age = (time.monotonic() - n.tgt_rx) if n.tgt_rx is not None else 0.0
+                extra = {'target_bearing_rad': bearing, 'rel_speed_mps': rel_speed,
+                         'obs_age_s': age,
+                         'rel_speed_norm_mps': self.cfg.get('rel_speed_norm_mps', 2.0),
+                         'obs_age_norm_s': self.cfg.get('obs_age_norm_s', 0.5)}
         obs = obs_spec.build_obs_vector(
             self.obs_version, n.sectors, n.x, n.y, dist, self._last_action,
-            self.cfg['num_sectors'], self.cfg['pose_norm_m'], self.cfg['track_norm_m'])
+            self.cfg['num_sectors'], self.cfg['pose_norm_m'], self.cfg['track_norm_m'], **extra)
         sigma = float(self.cfg['obs_noise_sigma'])
         if sigma > 0.0:
             obs = [v + self._noise_rng.gauss(0.0, sigma) for v in obs]

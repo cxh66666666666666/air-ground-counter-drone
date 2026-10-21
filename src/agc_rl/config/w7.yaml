@@ -5,8 +5,9 @@
 # `pose_norm_m` / `track_norm_m` / `control.*` / `input_timeout.*`）**不**在此重复 —— 以
 # `config/rl.yaml`（agent 与 env **共用**）为唯一真源，避免两处取值漂移。
 w7:
-  # 观测版本（spec R2）：checkpoint 元数据据此区分；旧版本永久保留、可回放。
-  obs_version: 1
+  # 观测版本（spec R2 / W7-b T4 E4）：checkpoint 元数据据此区分；旧版本永久保留、可回放。
+  # v2（W7-b）：v1 + 目标 bearing(sin/cos) / 相对速度 / 观测年龄（F-04）；v1 仍可回放。
+  obs_version: 2
   # 步进模型（R1/R3）：每 step 推进的**仿真秒**（异步实时，复用现栈）。
   control_dt_s: 0.1
   # 训练 horizon（step 数；0 = 不设，交由任务预算 / 墙钟看门狗）→ truncated 语义。

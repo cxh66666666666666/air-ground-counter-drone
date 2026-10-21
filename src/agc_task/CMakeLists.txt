@@ -31,6 +31,7 @@ ament_target_dependencies(run_logger
 add_executable(capture_adjudicator src/capture_adjudicator.cpp)
 ament_target_dependencies(capture_adjudicator
   rclcpp nav_msgs std_msgs agc_msgs)
+target_include_directories(capture_adjudicator PRIVATE include)
 
 install(TARGETS task_manager scenario_reset run_logger capture_adjudicator
   DESTINATION lib/${PROJECT_NAME})
@@ -40,5 +41,16 @@ install(PROGRAMS scripts/intruder_driver.py DESTINATION lib/${PROJECT_NAME} RENA
 install(PROGRAMS scripts/jammer.py DESTINATION lib/${PROJECT_NAME} RENAME jammer)
 
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
+
+# ADR-0076：场景配置不变量（纯配置，不启仿真）——防止"授权射击 + 里程碑仍为终态"的
+# 自相矛盾配置让捕获结局永不可达（实测 s08 曾 20/20 落 TRACKING_SUCCESS）。
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(scene_config_invariants "test/test_scene_config_invariants.py")
+  # ADR-0079：目标运动估计（静止阈值 / 时间窗回归 / 新息门 / 提前量上限）单测
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_target_motion_filter test/test_target_motion_filter.cpp)
+  target_include_directories(test_target_motion_filter PRIVATE include)
+endif()
 
 ament_package()

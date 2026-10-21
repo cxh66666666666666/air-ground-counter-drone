@@ -26,7 +26,7 @@ from pathlib import Path
 
 import yaml
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import (
@@ -38,7 +38,7 @@ from launch.actions import (
     SetEnvironmentVariable,
     TimerAction,
 )
-from launch.event_handlers import OnProcessStart
+from launch.event_handlers import OnProcessExit, OnProcessStart
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -71,6 +71,12 @@ def _compose(context, *args, **kwargs):
     # W7-a（R5/R6）：命令源单一选择由本入口透传至 ground_bringup——
     #   rl（RL 主控，默认）| baseline（Navfn + 自研 LQR 离线对照基线）| train（W7 外部训练/评估适配层作命令源）。
     command_source = LaunchConfiguration('command_source').perform(context)
+    # W7-b（P1，ADR-0070(a)）：`target_source` **覆盖**——P1 的自变量 α（协同程度）：
+    #   缺省（空）= 用 backend 能力表值（full → air_fusion = 空地**协同观测**）；
+    #   显式 `gt_adapter` = 地面直取真值（空中域不参与观测 → **非协同**臂）。
+    #   仅变更观测来源，余同（同场景 / seed / 安全层 / 终态 / 预算）。
+    _ts = LaunchConfiguration('target_source').perform(context)
+    target_source = _ts if _ts else BACKENDS[backend]['target_source']
     # W7-a（R3）：训练视图开关——显式设置时按 seed 随机化出生位（spawn 流）；缺省 None 不改既有行为。
     _sr = LaunchConfiguration('spawn_randomize').perform(context)
     spawn_randomize = None if _sr in (None, '', 'None') else (str(_sr).lower() in ('1', 'true', 'yes'))
@@ -106,6 +112,13 @@ def _compose(context, *args, **kwargs):
                     # R-029（ADR-0044）：世界模型文件（run_logger 记 sha256）单一注入
                     'world_file': info['world_file'],
                     'scene_manifest_file': manifest_path,
+                    # W7-b（T1/E1）：安全层开关透传（缺省 true；false = 无 shield 对照臂，纯仿真）
+                    'shield': LaunchConfiguration('shield'),
+                    # W7-b（P1）：观测来源——**用已解析的 `target_source`**（含 backend 能力表回退），
+                    # **不**直接透传 `LaunchConfiguration('target_source')`：后者在未显式给出时为
+                    # **空串**，会**覆盖** perception_bringup 的默认值 → gt_adapter/air_fusion 均
+                    # 「不发布 /agc/targets」→ 任务无目标 → TIMEOUT（实测轻量栈回归）。
+                    'target_source': target_source,
                 }.items(),
             ),
             # W6 拦截裁决（地面侧，无需 PX4）：发射式网捕获裁决器 + 行为级干扰注入
@@ -144,6 +157,19 @@ def _compose(context, *args, **kwargs):
     for n, over in (info['sc'].get('params') or {}).items():
         if n in air_merged:
             air_merged[n].update(over)
+    # W7-b（P1，甲方案）：空中机**观测偏航**覆盖——P1 自变量 α 的另一半落地（与 `target_source` 并列）：
+    #   缺省（空）= 用 air.yaml 默认 `velocity`（机头随速度 = 非协同观测）；
+    #   显式 `target` = 机头/相机**对准目标**（= 空地协同观测）。仅此一处自变量不同，余全同。
+    _oy = LaunchConfiguration('observe_yaw_mode').perform(context)
+    if _oy:
+        air_merged.setdefault('trajectory_tracker', {})['observe_yaw_mode'] = _oy
+    # W7-b（P1 公平性修正）：`air_tracking_ref:=off` → 空中机**固定航迹**（不订阅目标跟踪参考）——
+    #   tracker 永不 `acquired_`，故**不**会触发「已获目标后永久 hold 停机」（契约 C10 的自保语义
+    #   保持不变，只改变**本臂是否喂入跟踪参考**）。用于 P1 非协同臂（对应 ADR-0070「空中固定航迹」），
+    #   避免该臂因观测丢失而停机自锁 → 使「观测指向」成为真正被隔离的自变量。
+    if LaunchConfiguration('air_tracking_ref').perform(context) == 'off':
+        air_merged.setdefault('trajectory_tracker', {})['tracking_ref_topic'] = \
+            '/agc/air/tracking_ref__inactive_p1_fixed_traj'
     # S-06：静态障碍几何由**真源**注入空中安全列表（obstacle_names/x/y；半径 / margin 仍来自 air.yaml）。
     apply_air_geometry(air_merged, info['geometry'])
     air_doc = {n: {'ros__parameters': p} for n, p in air_merged.items()}
@@ -185,6 +211,11 @@ def _compose(context, *args, **kwargs):
             'GZ_SIM_RESOURCE_PATH': gz_models + ':' + gz_worlds,
             'PX4_GZ_STANDALONE': '1', 'PX4_GZ_WORLD': 'agc_world',
             'PX4_SIM_MODEL': 'gz_x500', 'PX4_GZ_MODEL_NAME': 'intruder_uav',
+            # 2026-10-20（uXRCE 实体创建失败排障）：按实例注入 **独立 agent 端口**——rcS 支持
+            #   `PX4_UXRCE_DDS_PORT` 覆盖（`uxrce_dds_client start -p $uxrce_dds_port`）。此前两实例
+            #   都用默认 8888（8889 空置）→ 单 agent 承双客户端，约 1 s 的客户端实体创建超时更易触发
+            #   `create entities failed: participant: 255`（own 实例无 odom / 不收 arm）。
+            'PX4_UXRCE_DDS_PORT': agent1_port,
         }, output='screen')
 
     actions = [
@@ -210,7 +241,8 @@ def _compose(context, *args, **kwargs):
             launch_arguments={
                 'use_sim_time': use_sim_time,
                 # R-026：整链以 air_fusion 承载感知轴 + 按轴选择通道 / 障碍文件
-                'target_source': BACKENDS[backend]['target_source'],
+                # W7-b（P1）：`target_source` 可被 launch 覆盖（协同=air_fusion / 非协同=gt_adapter）
+                'target_source': target_source,
                 'sensors_file': info['sensors_file'],
                 # S-06：障碍先验 / 地图几何由**真源派生**（不再读 agc_perception 包内副本）
                 'obstacles_file': info['obstacles_file'],
@@ -220,7 +252,9 @@ def _compose(context, *args, **kwargs):
             PythonLaunchDescriptionSource(
                 os.path.join(ground_share, 'launch', 'ground_bringup.launch.py')),
             launch_arguments={'use_sim_time': use_sim_time,
-                              'command_source': command_source}.items()),
+                              'command_source': command_source,
+                              # W7-b（T1/E1）：安全层开关透传（缺省 true；false = 无 shield 对照臂）
+                              'shield': LaunchConfiguration('shield')}.items()),
         # 两个 uXRCE-DDS Agent（实例各一，端口独立）
         ExecuteProcess(cmd=[agent_bin, 'udp4', '-p', agent0_port], output='screen'),
         ExecuteProcess(cmd=[agent_bin, 'udp4', '-p', agent1_port], output='screen'),
@@ -233,6 +267,8 @@ def _compose(context, *args, **kwargs):
                 'GZ_SIM_RESOURCE_PATH': gz_models + ':' + gz_worlds,
                 'PX4_GZ_STANDALONE': '1', 'PX4_GZ_WORLD': 'agc_world',
                 'PX4_SIM_MODEL': 'gz_x500', 'PX4_GZ_MODEL_POSE': own_pose,
+                # 己方实例绑 agent0 端口（显式，与入侵者的 agent1 端口对称，单一来源）
+                'PX4_UXRCE_DDS_PORT': agent0_port,
             }, output='screen')]),
         # 入侵者 PX4（实例 1）：attach 已生 `intruder_uav`（world_bringup 于 gz+3 s spawn）。
         # 25 s 计时**保留**理由：同属 gz 引擎 spawn 时序（须待世界 spawn 出入侵者模型），
@@ -244,20 +280,34 @@ def _compose(context, *args, **kwargs):
     for exe in ('px4_adapter', 'takeoff_controller', 'trajectory_tracker', 'standoff_follower'):
         actions.append(Node(package='agc_air', executable=exe, name=exe,
                             parameters=air_common, output='screen'))
-    actions.append(Node(
-        package='nav2_lifecycle_manager', executable='lifecycle_manager',
+    lifecycle_manager = Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
         name='lifecycle_manager_air',
         # R-034（ADR-0049）：bond_timeout **不**无条件置 0——被管空中节点已实现 Nav2 bond
         #   （topic=bond、id=节点名），故启用 bond 失联检测（被管节点死亡 → manager "IS DOWN" 硬复位）。
         parameters=[{'autostart': True, 'bond_timeout': 5.0, 'use_sim_time': use_sim_time,
                      'node_names': ['px4_adapter', 'takeoff_controller',
                                     'trajectory_tracker', 'standoff_follower']}],
-        output='screen'))
+        output='screen')
+    # ADR-0080：manager 启动前预热 lifecycle 服务连接（只读 get_state），避免其阻塞式
+    # `change_state` 在 DDS 发现预热期永久挂起（实测停在 `Configuring takeoff_controller`）。
+    prewarm_bin = os.path.join(
+        get_package_prefix('agc_air'), 'lib', 'agc_air', 'air_lifecycle_prewarm')
+    prewarm = ExecuteProcess(
+        cmd=[prewarm_bin, 'px4_adapter', 'takeoff_controller', 'trajectory_tracker',
+             'standoff_follower'],
+        output='screen')
+    actions.append(prewarm)
+    actions.append(RegisterEventHandler(OnProcessExit(
+        target_action=prewarm, on_exit=[lifecycle_manager])))
 
     # W6 任务层（地面侧）
     for exe in ('scenario_reset', 'task_manager', 'run_logger', 'capture_adjudicator', 'jammer'):
         # R-029：run_logger 另注入世界模型文件路径（记 sha256 作工具链 / 世界身份）
-        params = common + ([{'world_file': info['world_file']}] if exe == 'run_logger' else [])
+        extra = ([{'world_file': info['world_file']}] if exe == 'run_logger' else [])
+        # W7-b（T1/E1）：安全层开关（字符串承载→节点内解析）
+        if exe == 'run_logger':
+            extra = extra + [{'shield_layer_enabled': LaunchConfiguration('shield')}]
+        params = common + extra
         actions.append(Node(package='agc_task', executable=exe, name=exe,
                             parameters=params, output='screen'))
 
@@ -293,6 +343,21 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'spawn_randomize', default_value='',
         description='W7 训练视图：spawn 随机化开关（空=不改既有行为；true/false=显式覆盖）'))
+    # W7-b（T1/E1，ADR-0070(d)）：安全层开关——缺省 true（既有行为不变）；false = 无 shield 对照臂（纯仿真）。
+    ld.add_action(DeclareLaunchArgument(
+        'shield', default_value='true',
+        description='安全层开关：true=起 collision_monitor（默认）；'
+                    'false=无 shield 对照臂（恒等透传，纯仿真，不用于部署）'))
+    ld.add_action(DeclareLaunchArgument(
+        'target_source', default_value='',
+        description='W7-b P1：观测来源覆盖（空=用 backend 能力表值；air_fusion=协同；gt_adapter=非协同）'))
+    ld.add_action(DeclareLaunchArgument(
+        'observe_yaw_mode', default_value='',
+        description='W7-b P1（甲）：空中机观测偏航模式（空=air.yaml 默认 velocity；target=机头对准目标）'))
+    ld.add_action(DeclareLaunchArgument(
+        'air_tracking_ref', default_value='on',
+        description='W7-b P1：空中机**是否使用目标跟踪参考**（on=协同臂：空中机跟随目标；'
+                    'off=固定航迹臂：仅飞基础图-8，不订阅 /agc/air/tracking_ref）'))
     ld.add_action(DeclareLaunchArgument('use_sim_time', default_value='true'))
     ld.add_action(DeclareLaunchArgument(
         'gz_args', default_value=['-r -v 3 ', world_file],

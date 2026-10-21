@@ -286,9 +286,25 @@ private:
     }
   }
 
+  // W7-b 取证：入站 `Header.stamp` 须为**有效非负**仿真时刻。`sec < 0` 时
+  // `rclcpp::Time(stamp)` 构造**本身即抛** "cannot store a negative time point" → 整节点崩溃，
+  // 故**先查原始 sec/nanosec**（在构造之前），无效即**拒绝该样本**并如实一次性告警（含话题名）。
+  bool stampValidOnce(const builtin_interfaces::msg::Time & st, const char * topic, bool * warned)
+  {
+    if (st.sec >= 0) {return true;}
+    if (warned && !*warned) {
+      *warned = true;
+      RCLCPP_WARN(get_logger(),
+        "入站 %s 的 Header.stamp **无效**（sec=%d nsec=%u < 0）→ 拒绝该样本（源不置就绪）；"
+        "R-004 源采样时刻须为有效非负仿真时刻", topic, st.sec, st.nanosec);
+    }
+    return false;
+  }
+
   void onTargetGt(const geometry_msgs::msg::PoseStamped & m)
   {
     // 源采样时刻 = 入站消息 Header.stamp（非接受/发布时刻）；旧包晚到不得刷新增龄（spec R-004）
+    if (!stampValidOnce(m.header.stamp, "目标真值 /agc/gt/*", &warned_bad_target_stamp_)) {return;}
     const double s = rclcpp::Time(m.header.stamp).seconds();
     if (!target_seen_ || s >= target_src_s_) {
       truth_ = {m.pose.position.x, m.pose.position.y, m.pose.position.z};
@@ -301,6 +317,7 @@ private:
   void onDroneOdom(const nav_msgs::msg::Odometry & m)
   {
     // 源采样时刻 = 入站消息 Header.stamp（非接受/发布时刻）；spec R-004
+    if (!stampValidOnce(m.header.stamp, "无人机 odom /agc/air/odom", &warned_bad_drone_stamp_)) {return;}
     const double s = rclcpp::Time(m.header.stamp).seconds();
     if (!drone_seen_ || s >= drone_src_s_) {
       drone_pos_ = {m.pose.pose.position.x, m.pose.pose.position.y, m.pose.pose.position.z};
@@ -311,25 +328,43 @@ private:
     drone_seen_ = true;
   }
 
-  // 源寿命：源已见 且 年龄(now − 源采样时刻) ≤ source_timeout_s（≤0 视为不限时，兼容旧行为）
+  // 源寿命：源已见 且 源采样时刻**有效（≥0）** 且 年龄(now − 源采样时刻) ≤ source_timeout_s
+  // （≤0 视为不限时，兼容旧行为）。W7-b 取证：无效（<0）采样时刻**一律**视为源未就绪。
   bool sourceFresh(bool seen, double src_s, double now_s) const
   {
-    if (!seen) {return false;}
+    if (!seen || src_s < 0.0) {return false;}
     if (source_timeout_s_ <= 0.0) {return true;}
     return (now_s - src_s) <= source_timeout_s_;
   }
 
+  // B1 诊断（2026-10-21）：目标门控拒绝原因计数——只观测行为，不放宽任何门。
+  enum class GateReason
+  {
+    kOk, kNoPose, kBehind, kRangeMin, kRangeMax, kFovAz, kFovEl, kCount
+  };
+
   // 视场/距离门控：传感器原点 = 无人机位置，朝向 = 无人机姿态 × 机体系 boresight
   bool gatePoint(
     const SensorCfg & c, const std::array<double, 3> & pt, double * range, double * az_deg,
-    double * el_deg) const
+    double * el_deg, GateReason * why = nullptr) const
   {
-    if (!drone_pose_ok_) {return false;}
+    if (why) {*why = GateReason::kOk;}
+    if (!drone_pose_ok_) {
+      if (why) {*why = GateReason::kNoPose;}
+      return false;
+    }
     const std::array<double, 3> d{
       {pt[0] - drone_pos_[0], pt[1] - drone_pos_[1], pt[2] - drone_pos_[2]}};
     const double r = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
     *range = r;
-    if (r < c.range_min || r > c.range_max) {return false;}
+    if (r < c.range_min) {
+      if (why) {*why = GateReason::kRangeMin;}
+      return false;
+    }
+    if (r > c.range_max) {
+      if (why) {*why = GateReason::kRangeMax;}
+      return false;
+    }
     const std::array<double, 3> u{{d[0] / r, d[1] / r, d[2] / r}};
     const std::array<double, 3> bore = rotateVecByQuat(drone_quat_, c.boresight);
     const std::array<double, 3> up{{0.0, 0.0, 1.0}};
@@ -347,8 +382,18 @@ private:
     const double el = std::atan2(uc, std::hypot(fwd, rc));
     *az_deg = az * 180.0 / M_PI;
     *el_deg = el * 180.0 / M_PI;
-    if (fwd <= 0.0) {return false;}
-    if (std::fabs(az) > c.hfov_rad / 2.0 || std::fabs(el) > c.vfov_rad / 2.0) {return false;}
+    if (fwd <= 0.0) {
+      if (why) {*why = GateReason::kBehind;}
+      return false;
+    }
+    if (std::fabs(az) > c.hfov_rad / 2.0) {
+      if (why) {*why = GateReason::kFovAz;}
+      return false;
+    }
+    if (std::fabs(el) > c.vfov_rad / 2.0) {
+      if (why) {*why = GateReason::kFovEl;}
+      return false;
+    }
     return true;
   }
 
@@ -413,14 +458,19 @@ private:
     std::uniform_real_distribution<double> uni(0.0, 1.0);
     const bool indep_hit = (c.drop_prob > 0.0) && (uni(rng_[si]) < std::min(1.0, c.drop_prob));
     const bool burst = burstThisTick(si, c, dt);
-    if (indep_hit || burst) {return false;}
+    if (indep_hit || burst) {
+      ++diag_dropped_;
+      return false;
+    }
 
     std::normal_distribution<double> nx(0.0, c.sigma_xy), ny(0.0, c.sigma_xy), nz(0.0, c.sigma_z);
     const bool model_on = (c.corr_xy != 0.0 || c.noise_tau_s > 0.0);
 
     if (target_present_) {
       double gr = 0, gaz = 0, gel = 0;
-      if (gatePoint(c, truth_, &gr, &gaz, &gel)) {
+      GateReason why = GateReason::kOk;
+      if (gatePoint(c, truth_, &gr, &gaz, &gel, &why)) {
+        ++diag_gate_[static_cast<size_t>(GateReason::kOk)];
         const std::string occ = occlusion_enabled_ ? firstOccluder(truth_) : std::string();
         if (occ.empty()) {
           double ox, oy, oz;
@@ -445,7 +495,11 @@ private:
           out->tyaw = truth_yaw_;
           out->tseq = ++tseq_[si];
           out->t_target_src = target_src_s_;   // 目标源采样时刻（供 TargetObservation.header.stamp）
+        } else {
+          ++diag_blocked_;   // 门控通过但被遮挡（B1 诊断）
         }
+      } else {
+        ++diag_gate_[static_cast<size_t>(why)];   // 门控拒绝原因（B1 诊断）
       }
     }
 
@@ -541,6 +595,33 @@ private:
     target_present_ = sourceFresh(target_seen_, target_src_s_, t);
     drone_pose_ok_ = sourceFresh(drone_seen_, drone_src_s_, t);
 
+    // B1 诊断（2026-10-21）：每 5 s 汇总目标门控拒绝原因；**只观测**，不放宽任何门。
+    ++diag_ticks_;
+    if (target_present_) {++diag_present_ticks_;}
+    if (t - diag_last_log_s_ >= 5.0) {
+      const double present_ratio =
+        diag_ticks_ > 0 ? static_cast<double>(diag_present_ticks_) / diag_ticks_ : 0.0;
+      RCLCPP_INFO(get_logger(),
+        "B1 诊断(5s)：channels=%zu target_present=%.2f gate_ok=%llu no_pose=%llu behind=%llu "
+        "rmin=%llu rmax=%llu fov_az=%llu fov_el=%llu blocked=%llu dropped=%llu",
+        sensors_.size(), present_ratio,
+        static_cast<unsigned long long>(diag_gate_[static_cast<size_t>(GateReason::kOk)]),
+        static_cast<unsigned long long>(diag_gate_[static_cast<size_t>(GateReason::kNoPose)]),
+        static_cast<unsigned long long>(diag_gate_[static_cast<size_t>(GateReason::kBehind)]),
+        static_cast<unsigned long long>(diag_gate_[static_cast<size_t>(GateReason::kRangeMin)]),
+        static_cast<unsigned long long>(diag_gate_[static_cast<size_t>(GateReason::kRangeMax)]),
+        static_cast<unsigned long long>(diag_gate_[static_cast<size_t>(GateReason::kFovAz)]),
+        static_cast<unsigned long long>(diag_gate_[static_cast<size_t>(GateReason::kFovEl)]),
+        static_cast<unsigned long long>(diag_blocked_),
+        static_cast<unsigned long long>(diag_dropped_));
+      diag_gate_.fill(0);
+      diag_blocked_ = 0;
+      diag_dropped_ = 0;
+      diag_ticks_ = 0;
+      diag_present_ticks_ = 0;
+      diag_last_log_s_ = t;
+    }
+
     agc_msgs::msg::AirObservationArray arr;
     arr.header.stamp = now_t;
     arr.header.frame_id = world_frame_;
@@ -583,14 +664,21 @@ private:
   std::array<double, 3> truth_{{0.0, 0.0, 0.0}};
   double truth_yaw_{0.0};
   bool target_seen_{false};        // 是否曾收到目标真值（原始）
-  double target_src_s_{-1.0};      // 目标源采样时刻（入站 Header.stamp）
+  double target_src_s_{-1.0};      // 目标源采样时刻（入站 Header.stamp）；<0 = 未就绪
   bool target_present_{false};     // 派生：源寿命内的瞬时有效（每 tick 重算）
   std::array<double, 3> drone_pos_{{0.0, 0.0, 0.0}};
   std::array<double, 4> drone_quat_{{0.0, 0.0, 0.0, 1.0}};
   bool drone_seen_{false};         // 是否曾收到无人机 odom（原始）
-  double drone_src_s_{-1.0};       // 无人机 odom 源采样时刻（入站 Header.stamp）
+  double drone_src_s_{-1.0};       // 无人机 odom 源采样时刻（入站 Header.stamp）；<0 = 未就绪
   bool drone_pose_ok_{false};      // 派生：源寿命内的瞬时有效（每 tick 重算）
+  // W7-b 取证：无效（<0）源采样时刻的**一次性**告警（如实记录原始 sec/nsec，便于定位上游）
+  bool warned_bad_target_stamp_{false}, warned_bad_drone_stamp_{false};
   double source_timeout_s_{0.3};   // 源寿命期限（launch 单一注入）
+
+  // B1 诊断（2026-10-21）：目标门控拒绝原因计数（每 5 s 汇总后清零；不影响观测行为）
+  std::array<uint64_t, static_cast<size_t>(GateReason::kCount)> diag_gate_{};
+  uint64_t diag_blocked_{0}, diag_dropped_{0}, diag_ticks_{0}, diag_present_ticks_{0};
+  double diag_last_log_s_{0.0};
 
   rclcpp::Publisher<agc_msgs::msg::AirObservationArray>::SharedPtr pub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_sub_;

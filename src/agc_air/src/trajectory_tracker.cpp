@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -16,6 +17,7 @@
 #include <unistd.h>
 
 #include <builtin_interfaces/msg/time.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/executors/single_threaded_executor.hpp>
@@ -95,6 +97,32 @@ protected:
     control_permit_topic_ = declare_param_idempotent<std::string>(
       "control_permit_topic", "/agc/air/control_permit");
     max_yaw_rate_ = declare_param_idempotent<double>("max_yaw_rate", 2.0);
+    // W7-b（P1 甲方案）：观测偏航模式——P1 自变量 α 的落地（单一真源 air.yaml，缺省行为不变）。
+    //   "velocity"（缺省）= 机头随速度方向（= 既有行为 / 非协同观测臂）；
+    //   "target"          = 机头（固连前视相机）**对准目标**（= 空地协同观测臂）。
+    observe_yaw_mode_ =
+      declare_param_idempotent<std::string>("observe_yaw_mode", "velocity");
+    // W7-b（P1 甲）：**指向信息来源**（仅 `observe_yaw_mode=target` 时创建订阅与使用）。
+    //   如实标注：本段用**真值方位**（`/agc/gt/intruder_uav`）作**指向**信息 → 该臂 = **显式 oracle
+    //   指向臂**（ADR-0070(i) 允许「显式 oracle 臂」并须标注）；**测量**仍走真实感知通道
+    //   （噪声 / 丢包 / FOV 照常生效，不因指向而放宽）。
+    //   为何不用 `/agc/targets`（融合航迹）：对准会依赖「相机已看见目标」→ **冷启动自锁**
+    //   （实测：目标不在初始视场时两臂可见性同为 0，对不准 ⇒ 看不见 ⇒ 更对不准）。
+    yaw_aim_gt_topic_ =
+      declare_param_idempotent<std::string>("yaw_aim_gt_topic", "/agc/gt/intruder_uav");
+    if (observe_yaw_mode_ == "target") {
+      yaw_aim_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+        yaw_aim_gt_topic_, rclcpp::QoS(rclcpp::KeepLast(10)).reliable(),
+        [this](geometry_msgs::msg::PoseStamped::SharedPtr m) {
+          yaw_aim_pos_ = agc_air::Vector3(
+            m->pose.position.x, m->pose.position.y, m->pose.position.z);
+          yaw_aim_stamp_ = sourceStamp(m->header.stamp);
+          have_yaw_aim_ = true;
+        });
+      RCLCPP_WARN(get_logger(),
+        "observe_yaw_mode=target：已启用 **oracle 指向**（真值方位 %s）——本臂须如实标注为 oracle 臂"
+        "（ADR-0070(i)）；测量仍走真实感知通道", yaw_aim_gt_topic_.c_str());
+    }
     reset_phase_service_ = declare_param_idempotent<std::string>(
       "reset_phase_service", "/agc/air/reset_phase");
 
@@ -279,6 +307,15 @@ private:
     return age >= 0.0 && age < target_max_age_s_ && target_confidence_ >= confidence_min_;
   }
 
+  /// W7-b（P1 甲）：**指向源**（真值方位）新鲜度——仅 `observe_yaw_mode=target` 时使用；
+  /// 复用 `target_max_age_s_` 作年龄界（与契约 C10 目标窗口同量级），超龄即**不指向**（不凭陈旧方位转机头）。
+  bool yawAimFresh() const
+  {
+    if (!have_yaw_aim_) {return false;}
+    const double age = (now() - yaw_aim_stamp_).seconds();
+    return age >= 0.0 && age < target_max_age_s_;
+  }
+
   /// R-032：RL offset 的**寿命 / 生效窗口**（源时间 + 超时归零）。
   bool rlOffsetFresh() const
   {
@@ -422,11 +459,39 @@ private:
     // LQR → 世界系加速度指令
     const agc_air::Vector3 acc = controller_->computeAcceleration(state, effective);
 
-    // 偏航随速度方向（限速率），零速时保持
+    // 偏航：默认**随速度方向**（限速率，零速时保持）；`observe_yaw_mode == "target"` 时
+    // **对准目标** —— W7-b P1（甲方案）自变量 α 的落地：空地协同观测 = 令机体**固连前视相机**
+    // 持续对准目标（反之机头随速度 → 目标常被甩出 ±50° 视场 → 观测间歇）。
+    // 目标须过**指向源新鲜门** `yawAimFresh()`（真值方位，年龄 ≤ `target_max_age_s_`）；
+    // 不过门则**退回随速度**（不凭陈旧方位转机头）。
     double yaw = last_yaw_;
-    const double vh = std::hypot(effective.vel.x(), effective.vel.y());
-    if (vh > 0.05) {
-      const double desired_yaw = std::atan2(effective.vel.y(), effective.vel.x());
+    double desired_yaw = std::numeric_limits<double>::quiet_NaN();
+    const bool aim_fresh = yawAimFresh();
+    if (observe_yaw_mode_ == "target" && aim_fresh) {
+      const double dx = yaw_aim_pos_.x() - state.pos.x();
+      const double dy = yaw_aim_pos_.y() - state.pos.y();
+      if (std::hypot(dx, dy) > 1e-3) {
+        desired_yaw = std::atan2(dy, dx);
+        if (!aim_used_logged_) {
+          aim_used_logged_ = true;
+          RCLCPP_WARN(get_logger(),
+            "target 臂**指向生效**：desired_yaw=%.1f°（指向源到位，age 门通过）",
+            desired_yaw * 180.0 / M_PI);
+        }
+      }
+    } else if (observe_yaw_mode_ == "target" && !aim_skipped_logged_) {
+      // 诊断（一次性）：指向分支**未生效**——区分「指向源未到 / 超龄」与「已到但几何退化」
+      aim_skipped_logged_ = true;
+      RCLCPP_WARN(get_logger(),
+        "target 臂**指向未生效**：have_yaw_aim=%d aim_fresh=%d（源未到或超龄 → 退回随速度；"
+        "本臂可见性将与 velocity 臂无差异）", static_cast<int>(have_yaw_aim_),
+        static_cast<int>(aim_fresh));
+    }
+    if (!std::isfinite(desired_yaw)) {
+      const double vh = std::hypot(effective.vel.x(), effective.vel.y());
+      if (vh > 0.05) {desired_yaw = std::atan2(effective.vel.y(), effective.vel.x());}
+    }
+    if (std::isfinite(desired_yaw)) {
       const double max_step = max_yaw_rate_ / rate_hz_;
       double dyaw = desired_yaw - last_yaw_;
       while (dyaw > M_PI) {dyaw -= 2.0 * M_PI;}
@@ -638,6 +703,13 @@ private:
   double conflict_persist_s_{1.0};
   double conflict_clear_s_{2.0};       // R-035：竞争者 claim 消失清冲突阈值（s）
   double max_yaw_rate_{2.0};
+  std::string observe_yaw_mode_{"velocity"};   // W7-b P1（甲）：velocity（机头随速度）| target（对准目标）
+  std::string yaw_aim_gt_topic_{"/agc/gt/intruder_uav"};   // 仅 target 臂使用（oracle 指向源）
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr yaw_aim_sub_;
+  agc_air::Vector3 yaw_aim_pos_{agc_air::Vector3::Zero()};
+  rclcpp::Time yaw_aim_stamp_{0, 0, RCL_ROS_TIME};
+  bool have_yaw_aim_{false};
+  bool aim_used_logged_{false}, aim_skipped_logged_{false};   // 一次性诊断（W7-b P1 甲）
 
   pluginlib::ClassLoader<agc_control::TrajectoryGenerator> traj_loader_;
   pluginlib::ClassLoader<agc_control::Controller> ctrl_loader_;

@@ -29,6 +29,10 @@
 //       目标失效时**不**反射固定点、**不**刷新时间戳；窗口内（goal_hold_valid_s）保持最后有效目标的**原位置 +
 //       原源时刻**（age 自然增长）；超窗显式失效（valid=false）不发布带新时间戳的 goal 位姿。有效性/身份/时刻
 //       经伴随诊断 /agc/ground/goal_info（std_msgs/String，transient_local，非命令者）传递；新 episode 清缓存。
+// W7-b（步 1·甲-1）：空中控制权交接——整链（air_present=true）下，start 事务在门禁通过后**等「起飞完成
+//       （悬停）」**再显式触发 `/agc/air/release_control`（takeoff_controller → trajectory_tracker）。
+//       为何必须「等悬停」：takeoff_controller 是**唯一**发 ARM / Offboard-mode 的节点，提前 release 会停其
+//       tick（[release_control]）→ 飞机永不 arm；实测 start 时尚未 arm、悬停发生在 start 后 ~10–14 s。
 
 #include <chrono>
 #include <cmath>
@@ -73,6 +77,10 @@ public:
     // R-013：复位后门禁数据新鲜度上限（odom_valid / 地面 odom 同族共用；cmd 沿用 0.5）
     odom_valid_max_age_s_ = declare_parameter<double>("odom_valid_max_age_s", 1.0);
     fsm_hz_ = declare_parameter<double>("fsm_hz", 10.0);
+    // W7-b（ADR-0076）：tracking_milestone 是否等价为终态——缺省 true（既有行为不变）；
+    //   capture 场景置 false 时，里程碑只记指标（tracking_milestone_met_ = true）并发布事件，
+    //   **不**进入终态，让 `capture_adjudicator` 仍有机会判定 `INTERCEPT_CONFIRMED`。
+    tracking_milestone_is_terminal_ = declare_parameter<bool>("tracking_milestone_is_terminal", true);
     // 目标发布口径：false=固定 goal（M0/W5 兼容）；true=跟随目标当前 XY（移动式拦截，ADR-0014）
     goal_follow_target_ = declare_parameter<bool>("goal_follow_target", false);
     // R-041：目标失效策略 =「保留有期限的最后有效目标」(bounded hold-last-valid)。
@@ -115,6 +123,17 @@ public:
     const auto dwell_event_topic =
       declare_parameter<std::string>("dwell_event_topic", "/agc/task/dwell_event");
     reset_phase_service_ = declare_parameter<std::string>("reset_phase_service", "/agc/air/reset_phase");
+    // W7-b（步 1·甲-1）：空中控制权交接——本节点为唯一任务协调者，在**起飞完成（悬停）**后显式触发
+    //   `/agc/air/release_control`（Trigger），把 setpoint 权威从 takeoff_controller 交给 trajectory_tracker。
+    //   触发时机见文件头（提前 release 会让飞机永不 arm）。话题 / 门限均单一注入（契约 #params）。
+    release_service_ = declare_parameter<std::string>("release_service", "/agc/air/release_control");
+    air_odom_topic_ = declare_parameter<std::string>("air_odom_topic", "/agc/air/odom");
+    // 悬停判据 = `/agc/air/odom` 世界 ENU z 相对**起飞前基准（本 run 最小 z，即地面高度）**的爬升量（m）。
+    // 默认 2.3 与 `air.yaml` 的 takeoff_altitude_m=2.5 / hover_tolerance_m=0.25 对齐（2.5−0.25≈2.25）。
+    air_hover_climb_m_ = declare_parameter<double>("air_hover_climb_m", 2.3);
+    // 有界等待起飞完成（s）——超时即如实拒绝 start（INFRA_FAILURE），**不**静默假设已起飞。
+    // 缺省值与真源 `w6_base.yaml`（45.0）保持一致，避免"节点缺省 ≠ 注入值"的漂移。
+    air_hover_timeout_s_ = declare_parameter<double>("air_hover_timeout_s", 45.0);
     // 运行模式（R-001）：显式声明本次运行是否包含空中域，取代"服务缺席即推定无空中域"。
     // true = 整链（含空中域）：相位复位（C5）为硬门禁，服务未发现/超时/失败一律拒绝 start；
     // false = 纯地面运行（M0 / W5 / 轻量 W6）：无相位可复位，该项不适用。由 launch 单一设置。
@@ -169,6 +188,15 @@ public:
             air_control_conflict_ ? "true" : "false");
         }
       });
+    // W7-b（步 1·甲-1）：空中域里程计——**仅**用于「起飞完成（悬停）」判据（air_present=true 时生效）。
+    //   取世界 ENU z（与 trajectoy_tracker / OffboardInterface 同一 odom 话题与口径）。
+    air_odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+      air_odom_topic_, rclcpp::SensorDataQoS(),
+      [this](nav_msgs::msg::Odometry::SharedPtr m) {
+        air_z_ = m->pose.pose.position.z;
+        if (air_z_ < air_z_min_) {air_z_min_ = air_z_;}   // 本 run 最小 z = 起飞前基准（地面高度）
+        have_air_odom_ = true;
+      });
     jam_sub_ = create_subscription<std_msgs::msg::String>(
       jam_confirm_topic, 10,
       [this](std_msgs::msg::String::SharedPtr m) {
@@ -188,7 +216,13 @@ public:
       [this](std_msgs::msg::String::SharedPtr m) {
         const std::string d = m->data;
         const int ep = parseEp(d);
-        if (ep < 0 || episode_epoch_ < 0 || ep != episode_epoch_) {return;}   // 旧 / 异 episode 拒收
+        if (ep < 0 || episode_epoch_ < 0 || ep != episode_epoch_) {
+          // ADR-0078：不再静默——episode 身份错位曾使已发生的 CAPTURE_NET 被整批丢弃（表现为 TIMEOUT）。
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+            "capture_event 拒收：ep=%d episode_epoch=%d（事件与当前 episode 身份不一致）",
+            ep, episode_epoch_);
+          return;   // 旧 / 异 episode 拒收
+        }
         capture_reason_ = firstToken(d);
         capture_rx_ = now();
       });
@@ -218,6 +252,8 @@ public:
     reset_client_node_ = std::make_shared<rclcpp::Node>("task_manager_svc_client");
     reset_client_ = reset_client_node_->create_client<Trigger>("/agc/scenario/reset");
     reset_phase_client_ = reset_client_node_->create_client<Trigger>(reset_phase_service_);
+    // W7-b（步 1·甲-1）：空中控制权交接客户端（takeoff_controller 提供 /agc/air/release_control）。
+    release_client_ = reset_client_node_->create_client<Trigger>(release_service_);
 
     // R-013：start/abort 服务放入**独立互斥回调组**。服务回调会阻塞等待 reset/reset_phase
     // （spin_until_future_complete）；订阅留在默认组并交由多线程执行器在其它线程处理，
@@ -320,6 +356,23 @@ private:
       return CallOutcome::Indeterminate;
     }
     return fut.get()->success ? CallOutcome::Ok : CallOutcome::Failed;
+  }
+
+  /// W7-b（步 1·甲-1）：有界等待「起飞完成（悬停）」——判据 = `/agc/air/odom` 世界 ENU z 相对**起飞前
+  ///   基准**（本 run 最小 z，即地面高度）的爬升量 ≥ `air_hover_climb_m_`（飞机已在空中 ⇒ takeoff 已 arm
+  ///   且进入 Offboard）。返回空串 = 就绪；非空 = 失败原因（供 fail()，如实拒绝 start，**不**静默假设已起飞）。
+  std::string waitAirHover()
+  {
+    const auto deadline = std::chrono::steady_clock::now() +
+      std::chrono::duration<double>(air_hover_timeout_s_);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (have_air_odom_ && (air_z_ - air_z_min_) >= air_hover_climb_m_) {return std::string();}
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    RCLCPP_WARN(get_logger(),
+      "等待起飞完成超时（%.1fs 内未见爬升达 %.2f m：air_odom=%d z=%.2f base=%.2f）",
+      air_hover_timeout_s_, air_hover_climb_m_, have_air_odom_ ? 1 : 0, air_z_, air_z_min_);
+    return std::string("air_hover_timeout");
   }
 
   void onStart(const std::shared_ptr<Trigger::Request>, std::shared_ptr<Trigger::Response> res)
@@ -444,6 +497,30 @@ private:
       RCLCPP_INFO(get_logger(), "R-013 门禁证据(失败=%s): %s", reason.c_str(), evid.c_str());
       fail(res, reason, evid);
       return;
+    }
+
+    // 4) 空中控制权交接（W7-b 步 1·甲-1）：门禁通过后，整链模式**等「起飞完成（悬停）」**再显式触发
+    //    release_control（takeoff_controller → trajectory_tracker）。轻量栈无空中域，整段跳过。
+    //    R-022 三分：Failed→INFRA_FAILURE；Indeterminate→不改状态、只回失败（不误置）。
+    if (air_present_) {
+      const std::string hover_reason = waitAirHover();
+      if (!hover_reason.empty()) {
+        fail(res, hover_reason);
+        return;
+      }
+      const CallOutcome rel_outcome = callTrigger(release_client_, "air/release_control", true);
+      if (rel_outcome == CallOutcome::Failed) {
+        fail(res, "release_control_failed");
+        return;
+      }
+      if (rel_outcome == CallOutcome::Indeterminate) {
+        res->success = false;
+        res->message = "start rejected: release_control_indeterminate (slow/timeout; state unchanged)";
+        RCLCPP_WARN(get_logger(), "release_control 超时/取消：状态保持 %s（不误置）", nameOf(state_));
+        return;
+      }
+      RCLCPP_INFO(get_logger(),
+        "空中控制权交接：已触发 %s（takeoff_controller → trajectory_tracker）", release_service_.c_str());
     }
 
     start_time_ = now();
@@ -655,7 +732,13 @@ private:
         // 3) 连续达阈值才成功（保持 C8 不降级）
         if (dwell_start_.nanoseconds() != 0 && (t - dwell_start_).seconds() >= t_dwell_) {
           tracking_milestone_met_ = true;
-          enterTerminal(AgcTaskState::TRACKING_SUCCESS, "tracking_milestone");
+          // ADR-0076：capture 场景（tracking_milestone_is_terminal=false）下**不**锁存 TRACKING_SUCCESS——
+          //   否则 `capture_adjudicator` 的 GROUND_APPROACH 交火窗口会被提前关闭，捕获永远不发生。
+          //   里程碑仍如实记入 tracking_milestone_met_（随 /agc/task/state 发布），供指标使用；
+          //   结局交由捕获裁决（CAPTURE_NET）或 t_max TIMEOUT 决定。
+          if (tracking_milestone_is_terminal_) {
+            enterTerminal(AgcTaskState::TRACKING_SUCCESS, "tracking_milestone");
+          }
         }
         break; }
       default: break;
@@ -770,6 +853,13 @@ private:
   }
 
   std::string world_name_, reset_phase_service_, ground_controller_name_;
+  // W7-b（步 1·甲-1）：空中控制权交接参数与观测（世界 ENU z 相对**起飞前基准**的爬升量判悬停）
+  std::string release_service_, air_odom_topic_;
+  double air_hover_climb_m_{2.3};
+  double air_hover_timeout_s_{18.0};
+  bool have_air_odom_{false};
+  double air_z_{0.0};
+  double air_z_min_{std::numeric_limits<double>::infinity()};
   double goal_x_{4.0}, goal_y_{3.0};
   double d_track_{3.0}, t_dwell_{3.0}, t_max_{120.0}, confidence_min_{0.5}, target_max_age_s_{0.5};
   double odom_valid_max_age_s_{1.0};   // R-013：复位后 odom_valid / 地面 odom 新鲜度上限
@@ -826,6 +916,8 @@ private:
   rclcpp::Time capture_rx_{0, 0, RCL_ROS_TIME};
   rclcpp::Time jam_rx_{0, 0, RCL_ROS_TIME};
   bool tracking_milestone_met_{false};
+  // ADR-0076：tracking_milestone 是否等价终态（capture 场景 false → 只记指标、不改终态）
+  bool tracking_milestone_is_terminal_{true};
   int reset_retries_{0};
   bool reset_failed_{false};
 
@@ -835,6 +927,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr ground_odom_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr air_active_sub_, jam_sub_, capture_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr air_conflict_sub_;   // R-035：只读 control_conflict
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr air_odom_sub_;   // W7-b：起飞完成（悬停）判据
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr epoch_sub_;   // R-021：episode epoch 学习
   rclcpp::Publisher<AgcTaskState>::SharedPtr state_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub_;
@@ -844,7 +937,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr reset_retries_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr reset_failed_pub_;
   std::shared_ptr<rclcpp::Node> reset_client_node_;
-  rclcpp::Client<Trigger>::SharedPtr reset_client_, reset_phase_client_;
+  rclcpp::Client<Trigger>::SharedPtr reset_client_, reset_phase_client_, release_client_;
   rclcpp::Service<Trigger>::SharedPtr start_srv_, abort_srv_;
   rclcpp::CallbackGroup::SharedPtr srv_cb_group_;   // R-013：start/abort 服务独立互斥回调组
   rclcpp::TimerBase::SharedPtr state_timer_, goal_timer_, fsm_timer_;

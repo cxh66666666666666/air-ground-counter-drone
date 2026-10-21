@@ -58,6 +58,9 @@ foreach(node ${NODES})
 endforeach()
 
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
+# ADR-0080：lifecycle 服务预热（manager 启动前执行；仅预热，不改节点状态）
+install(PROGRAMS scripts/air_lifecycle_prewarm.py
+  DESTINATION lib/${PROJECT_NAME} RENAME air_lifecycle_prewarm)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)

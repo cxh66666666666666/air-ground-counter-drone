@@ -15,13 +15,16 @@
 
 import datetime
 import hashlib
+import math
 import json
 import os
 
 from agc_rl import interface
 
 # 当前默认观测版本（checkpoint 元数据据此区分）。
-OBS_VERSION = 1
+# W7-b（T4/E4，F-04 / ADR-0070(d)）：升级到 v2（新增目标 bearing / 相对速度 / 观测年龄）；
+# v1 定义**永久保留**、可回放（旧权重不静默失效）。
+OBS_VERSION = 2
 ACTION_KIND = 'discrete'
 
 
@@ -73,8 +76,28 @@ def _build_v1(num_sectors, **kw):
               'lidar_max_range': kw.get('lidar_max_range', 10.0)})
 
 
+# v2 追加字段（W7-b T4/E4，F-04）：目标方位（sin/cos 避免 ±π 跳变）+ 相对速度 + 观测年龄。
+EXTRA_FIELDS_V2 = ['target_bearing_sin', 'target_bearing_cos',
+                   'target_rel_speed_over_norm', 'target_obs_age_over_norm']
+
+
+def _fields_v2(num_sectors):
+    return _fields_v1(num_sectors) + list(EXTRA_FIELDS_V2)
+
+
+def _build_v2(num_sectors, **kw):
+    return ObsSpec(
+        version=2, num_sectors=num_sectors, fields=_fields_v2(num_sectors),
+        low=-2.0, high=1.0,
+        norm={'pose_norm_m': kw.get('pose_norm_m', 10.0),
+              'track_norm_m': kw.get('track_norm_m', 5.0),
+              'lidar_max_range': kw.get('lidar_max_range', 10.0),
+              'rel_speed_norm_mps': kw.get('rel_speed_norm_mps', 2.0),
+              'obs_age_norm_s': kw.get('obs_age_norm_s', 0.5)})
+
+
 # 版本注册表：**永久**保留各版本构造器（旧版本回放可用，不静默失效）。
-_BUILDERS = {1: _build_v1}
+_BUILDERS = {1: _build_v1, 2: _build_v2}
 
 
 def register(version, builder):
@@ -90,23 +113,36 @@ def get_obs_spec(version=OBS_VERSION, num_sectors=12, **kw):
 
 
 def build_obs_vector(obs_version, sectors, pose_x, pose_y, dist_to_goal, last_action,
-                     num_sectors, pose_norm_m, track_norm_m):
+                     num_sectors, pose_norm_m, track_norm_m, **kw):
     """按 `obs_version` 构造观测向量。
 
-    v1 直接**引用** `agc_rl.interface.build_observation`（冻结真源）；后续版本在此分派，
-    故"换版本不使旧权重静默失效"——旧版本分支始终保留。
+    v1 直接**引用** `agc_rl.interface.build_observation`（冻结真源）；v2 在 v1 基础上追加
+    **目标 bearing（sin/cos）/ 相对速度 / 观测年龄**（W7-b T4/E4，F-04）。旧版本分支始终保留，
+    故"换版本不使旧权重静默失效"。
+
+    v2 额外输入（`kw`，缺省 0 = 未知，保守）：
+      `target_bearing_rad`（rad，车体系，0=正前、左为正）、`rel_speed_mps`、`obs_age_s`、
+      `rel_speed_norm_mps`（默认 2.0）、`obs_age_norm_s`（默认 0.5）。
     """
+    base = interface.build_observation(
+        sectors, pose_x, pose_y, dist_to_goal, last_action,
+        num_sectors, pose_norm_m, track_norm_m)
     if int(obs_version) == 1:
-        return interface.build_observation(
-            sectors, pose_x, pose_y, dist_to_goal, last_action,
-            num_sectors, pose_norm_m, track_norm_m)
-    spec = get_obs_spec(obs_version, num_sectors)
-    if spec.dim == interface.obs_dim(num_sectors):
-        return interface.build_observation(
-            sectors, pose_x, pose_y, dist_to_goal, last_action,
-            num_sectors, pose_norm_m, track_norm_m)
+        return base
+    if int(obs_version) == 2:
+        b = float(kw.get('target_bearing_rad', 0.0))
+        rel = float(kw.get('rel_speed_mps', 0.0))
+        age = float(kw.get('obs_age_s', 0.0))
+        rel_norm = max(float(kw.get('rel_speed_norm_mps', 2.0)), 1e-6)
+        age_norm = max(float(kw.get('obs_age_norm_s', 0.5)), 1e-6)
+        base = list(base)
+        base.append(math.sin(b))
+        base.append(math.cos(b))
+        base.append(min(abs(rel) / rel_norm, 1.0))
+        base.append(min(max(age, 0.0) / age_norm, 1.0))
+        return base
     raise NotImplementedError(
-        'obs_version=%d 的构造未实现（本段只落机制，维度扩展属 W7-b）' % int(obs_version))
+        'obs_version=%d 的构造未实现（已登记：%s）' % (int(obs_version), sorted(_BUILDERS)))
 
 
 class NormStats:

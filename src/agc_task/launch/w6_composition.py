@@ -320,6 +320,14 @@ def assertions(scene, merged, info, air_merged=None):
         'derived_obstacles_match_axis':
             (obs_ids == gids) if info['world_obstacles'] == 'static' else (obs_ids == []),
     }
+    # ADR-0076 不变量：**已授权射击**的场景必须关闭「跟踪里程碑即终态」——
+    #   否则 `capture_adjudicator` 的交火窗口（`task_state == GROUND_APPROACH`）会在
+    #   `TRACKING_SUCCESS` 锁存时被提前关闭，捕获（`INTERCEPT_CONFIRMED/CAPTURE_NET`）**永不发生**
+    #   （实测 s08 协同臂 20/20 落 TRACKING_SUCCESS）。此断言把该配置矛盾挡在启动前。
+    authorized = bool((merged.get('capture_adjudicator') or {}).get('interception_authorized', False))
+    milestone_terminal = bool(
+        (merged.get('task_manager') or {}).get('tracking_milestone_is_terminal', True))
+    res['capture_authorized_requires_nonterminal_milestone'] = (not authorized) or (not milestone_terminal)
     if air_merged is not None:
         safety = air_merged.get('trajectory_tracker', {}).get('safety', {})
         res['air_obstacles_match_geometry'] = (

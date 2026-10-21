@@ -39,7 +39,8 @@ R-018（[ADR-0033]）：授权 / 发送**不等于**效果。证据链拆为
     `JAM_FAIL_NOT_SUSTAINED`（达到但未持续 `jam_sustain_s`）——负例亦携带 `factor`。
 
 R-020（[ADR-0035]）：干扰**作用包络**已与**捕获作用包络**分离。
-  * 捕获包络 `/agc/task/envelope_in` 仍由 `capture_adjudicator` 的**网弹道（闭式占位）模型**给出
+  * 可交战包络 `/agc/task/envelope_in` 由 `capture_adjudicator` 的**最小动态火控交战门**给出
+    （W7-b T2/E2：逐帧弹道；高度含车体 `h = target.z − car.z − launcher_h`）。
     （高度含车体 `h = target.z − car.z − launcher_h`）。
   * 干扰包络 `/agc/task/envelope_jam` 为**独立模型**（`behavioral_range_gate`：高度带 + 水平距离门），
     **不**与网弹道共源。本节点默认门控话题即为该独立干扰包络。

@@ -1,0 +1,40 @@
+# W7-b 确证实验**预注册**（R4；ADR-0070(h)）—— 单一来源（契约 #params）。
+#
+# 本文件在**确证实验之前**写定判定规则 / 样本量 / 显著性阈值；运行顺序即证据：
+# 预注册文件（git 提交时间）**早于**确证 run（`experiments/w7-rl-b/<run_id>`）。
+# 承重实验**不得**事后改阈值（[F-13](docs/reviews/agc-review-2026-10-14/30-未来.md#f-13)：防选择偏差 / 制造假改进）。
+w7b_prereg:
+  # 预注册口径版本（变更须新版本号，旧版保留）。
+  version: 1
+  # —— 判定规则 ——
+  # P1 协同收益（主线）：协同臂在预注册样本 + 置信区间下显著优于**非协同**（有效火控机会 / 最小净空）。
+  # P2 RL 职责分层（副线）：臂 B（高层 + 成熟低层）在**等预算**下显著优于臂 A（c2）。
+  # 失败判据：不显著 → 对应命题**证伪**（P2 证伪 ⇒ **保留 c2**，不推翻 ADR-0004）。
+  decision:
+    p1: "cooperative > non_cooperative (fire_control_opportunity_rate, min_clearance)"
+    p2: "high_level > c2 (equal budget)"
+    falsification:
+      p1: "cooperative 不显著优于 non_cooperative → 协同收益证伪"
+      p2: "high_level 不显著优于 c2 → 保留 c2"
+  # —— 样本量 / 显著性（**依效应大小**在确证实验前设定；此值为当前设定，改动即升 version）——
+  statistics:
+    # 每臂配对 episode 数（[F-07](docs/reviews/agc-review-2026-10-14/30-未来.md#f-07) 三级种子 + CRN 配对）。
+    n_paired_episodes_per_arm: 20
+    # 显著性水平（双侧）。
+    alpha: 0.05
+    # 目标把握度。
+    power: 0.80
+    # 最小感兴趣效应（有效火控机会率的绝对提升）。
+    min_detectable_effect: 0.10
+    # 区间估计：报告置信区间（不剔除失败 / infra，如实计入分母）。
+    report_confidence_interval: true
+  # —— 口径纪律 ——
+  policies:
+    timeout_is_failure: true          # 契约 C4
+    infra_listed_separately: true     # infra 单列，不吞入成功率
+    keep_all_failures_and_infra: true # 保留全部失败 / infra 计数
+    same_seed_paired: true            # 同 seed 配对（CRN）
+    no_bitwise_physics_claim: true    # 不承诺 bitwise 物理一致（W7-a 已知边界）
+  # —— 状态 ——
+  status: "pre_registered"            # 确证实验**未执行**（见 ADR-0071）
+  note: "臂可运行性证据（R1–R3）已取得（ADR-0071）；本预注册针对**确证对比**，其 run 尚未执行。"

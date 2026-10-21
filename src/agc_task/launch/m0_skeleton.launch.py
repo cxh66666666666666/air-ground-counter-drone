@@ -50,7 +50,8 @@ def generate_launch_description():
             os.path.join(perception_share, 'launch', 'perception_bringup.launch.py')),
         launch_arguments={
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'target_source': 'gt_adapter',
+            # W7-b（P1）：观测来源（lightweight 缺省 gt_adapter；可被上层覆盖）
+            'target_source': LaunchConfiguration('target_source'),
             # R-026：传感器通道 / 障碍真值文件按场景轴由上层选择并单一注入
             'sensors_file': LaunchConfiguration('sensors_file'),
             'obstacles_file': LaunchConfiguration('obstacles_file'),
@@ -67,6 +68,8 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'command_source': LaunchConfiguration('command_source'),
+            # W7-b（T1/E1）：安全层开关透传（缺省 true；false = 无 shield 对照臂，纯仿真）
+            'shield': LaunchConfiguration('shield'),
         }.items(),
     )
 
@@ -90,7 +93,9 @@ def generate_launch_description():
                  {'scene_manifest_file': LaunchConfiguration('scene_manifest_file'),
                   # R-029（ADR-0044）：世界模型文件 → run_logger 记 sha256（工具链身份）
                   'world_file': LaunchConfiguration('world_file'),
-                  'params_file': LaunchConfiguration('params_file')}],
+                  'params_file': LaunchConfiguration('params_file'),
+                  # W7-b（T1/E1）：安全层开关（字符串承载→节点内解析）——false 时 action 新鲜度门不适用
+                  'shield_layer_enabled': LaunchConfiguration('shield')}],
              output='screen'),
     ]
 
@@ -105,6 +110,13 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'command_source', default_value='rl',
         description='W5 地面命令源（互斥）：rl | baseline'))
+    ld.add_action(DeclareLaunchArgument(
+        'target_source', default_value='gt_adapter',
+        description='W7-b P1：观测来源（air_fusion / gt_adapter）'))
+    # W7-b（T1/E1）：安全层开关透传（缺省 true；false = 无 shield 对照臂，纯仿真）
+    ld.add_action(DeclareLaunchArgument(
+        'shield', default_value='true',
+        description='安全层开关：true=起 collision_monitor（默认）；false=无 shield 对照臂'))
     # R-026：场景轴承载者接线（缺省 = 既有行为：static 世界 + 标称通道 + 默认障碍 + 无 manifest）
     ld.add_action(DeclareLaunchArgument(
         'world_obstacles', default_value='static',

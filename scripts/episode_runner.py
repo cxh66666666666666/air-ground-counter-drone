@@ -37,6 +37,7 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 
 from agc_msgs.msg import AgcTaskState
 from std_srvs.srv import Trigger
+from std_msgs.msg import Bool
 
 # W7-a（R1）：episode 结束判定 / 预算口径的**单一来源** = `agc_rl.termination`
 # （训练 adapter 与评估 adapter 共用同一判定，spec R1 判据：摘要与 adapter end/reason 一致）。
@@ -55,6 +56,10 @@ ROOT = '/home/chen/AGC'
 GT_CAR_TOPIC = '/agc/gt/agc_car'
 GT_TARGET_TOPIC = '/agc/gt/intruder_uav'
 GT_FRESH_S = 1.0
+
+# R-013 / W7-b 取证：地面里程计有效位——task_manager 的 start 门**要求** `odom_valid==true`；
+# full 链下它由 ground_odom_adapter 晚到（实测曾被 task_manager 以 `odom_invalid` 拒 start）。
+ODOM_VALID_TOPIC = '/agc/ground/odom_valid'
 
 # W7-a（R5）：命令链回环门槛——`/agc/ground/cmd_vel`（唯一执行口输出）新鲜即命令链已活。
 CMD_TOPIC = '/agc/ground/cmd_vel'
@@ -139,11 +144,13 @@ def _carriers():
         return yaml.safe_load(f)['axes']
 
 
-def axis_coverage(scene, registry, carriers):
+def axis_coverage(scene, registry, carriers, backend=BACKEND):
     """R-026：逐轴覆盖账本——unsupported（无承载者）/ not_carried（轻量栈缺承载）/ covered。
 
     **如实标注**，绝不以登记命名冒充已执行；轻量栈的运动轴（无 PX4/intruder_driver）与
     感知轴（无空中链路）标 not_carried。
+    ⚠ 修正（2026-10-20 自查）：`backend` 原为模块常量（永远按轻量栈判）→ 整链（`full`）episode 的
+    空中依赖轴被误标 `not_carried`。改为**按实际 backend 判定**（缺省保持既有轻量栈行为）。
     """
     sc = registry.get(scene, {})
     axes = sc.get('axes') or {}
@@ -155,7 +162,7 @@ def axis_coverage(scene, registry, carriers):
             ledger[ax] = {'value': val, 'status': 'unsupported',
                           'carrier': (ent or {}).get('carrier'),
                           'reason': (ent or {}).get('reason', '无承载者登记')}
-        elif ent.get('requires_air_link') and BACKEND == 'lightweight':
+        elif ent.get('requires_air_link') and backend == 'lightweight':
             ledger[ax] = {'value': val, 'status': 'not_carried',
                           'carrier': ent.get('carrier'),
                           'reason': '轻量栈无 PX4 / 空中链路（承载者不生效）'}
@@ -215,11 +222,15 @@ class Monitor(Node):
         self.gt_car_rx = None       # R-031：车/目标真值旁路最近接收墙钟（就绪门槛用）
         self.gt_target_rx = None
         self.cmd_rx = None          # W7-a：/agc/ground/cmd_vel 回环最近接收墙钟
+        self.odom_valid = None      # W7-b：/agc/ground/odom_valid 最近值（None=未收到）
+        self.odom_valid_rx = None
+        self.sim_at_start = None    # W7-b（ADR-0074）：start 调用时刻的仿真钟（固定观测时长基准）
         self.create_subscription(AgcTaskState, '/agc/task/state', self._on, 20)
         self.create_subscription(Clock, '/clock', self._on_clock, 1)
         self.create_subscription(PoseStamped, GT_CAR_TOPIC, self._on_gt_car, 10)
         self.create_subscription(PoseStamped, GT_TARGET_TOPIC, self._on_gt_target, 10)
         self.create_subscription(TwistStamped, CMD_TOPIC, self._on_cmd, 20)
+        self.create_subscription(Bool, ODOM_VALID_TOPIC, self._on_odom_valid, 10)
         self.cli = self.create_client(Trigger, '/agc/task/start')
 
     def _on(self, m):
@@ -243,6 +254,15 @@ class Monitor(Node):
     def _on_cmd(self, m):
         self.cmd_rx = time.monotonic()
 
+    def _on_odom_valid(self, m):
+        self.odom_valid = bool(m.data)
+        self.odom_valid_rx = time.monotonic()
+
+    def odom_valid_ok(self):
+        """W7-b：`/agc/ground/odom_valid` 已收到且为 true（task_manager 的 start 门要求项）。"""
+        return bool(self.odom_valid) and self.odom_valid_rx is not None and \
+            (time.monotonic() - self.odom_valid_rx) < GT_FRESH_S
+
     def gt_fresh(self):
         """R-031：车 / 目标真值旁路是否**均在新鲜窗口内**（scenario_reset 复位前置：gt 新鲜）。"""
         t = time.monotonic()
@@ -262,6 +282,7 @@ class Monitor(Node):
             return False, 'service unavailable'
         fut = self.cli.call_async(Trigger.Request())
         rclpy.spin_until_future_complete(self, fut, timeout_sec=timeout)
+        self.sim_at_start = self.sim   # ADR-0074：固定观测时长基准（start 时刻的仿真钟）
         return (fut.result().success, fut.result().message) if fut.done() else (False, 'timeout')
 
     def wait_terminal(self, timeout):
@@ -282,9 +303,9 @@ def wait_ready(mon, timeout_s):
     t0 = time.monotonic()
     while time.monotonic() - t0 < timeout_s:
         rclpy.spin_once(mon, timeout_sec=0.1)
-        if mon.cli.service_is_ready() and mon.gt_fresh() and mon.cmd_fresh():
+        if mon.cli.service_is_ready() and mon.gt_fresh() and mon.cmd_fresh() and mon.odom_valid_ok():
             return True
-    return mon.cli.service_is_ready() and mon.gt_fresh() and mon.cmd_fresh()
+    return mon.cli.service_is_ready() and mon.gt_fresh() and mon.cmd_fresh() and mon.odom_valid_ok()
 
 
 def _group_alive(pgid):
@@ -298,6 +319,85 @@ def _group_alive(pgid):
         return False
     except PermissionError:
         return True
+
+
+# ADR-0075（2026-10-20）：**运行前清场**——防"上次 run 的残留 / 逃逸孤儿"污染本 run。
+#
+# 实测链条：上次 run 被**外部终止**（网络中断 / toolhost 只杀到 leader）时，launch 的子进程
+# （`ros_gz_bridge` 的 `parameter_bridge`、`tf2_ros` 的 `static_transform_publisher`，
+# 均为 `/opt/ros/jazzy/lib/...`，**不**含 `install/agc_` 字样）会逃逸成孤儿（被收割者收养），
+# 继续持有 Fast DDS 参与者与 `/dev/shm` 段 → 后续 run 的 uXRCE agent 侧 participant 创建从
+# **0.67 s 恶化到 1.5–2.7 s**，超过 PX4 客户端硬编码 1 s 预算 → `create entities failed:
+# participant: 255` → 无 `/fmu/out/*` writer → 整链 infra（实测一条命令连试 4 次全失败；
+# 清场后同一命令 **0.67 s** 成功）。
+#
+# 纪律（对齐 R-031）：只匹配**本项目**特征（`install/agc_*` / agent / PX4 / `agc_world`·`agc_car`
+# 的桥与 tf / `agc_world.sdf` 的 gz），**不**按裸名匹配、**不**碰非 AGC 进程；在 Popen **之前**调用
+# → 本 run 进程尚未创建，故命中者必为上次 run 的残留。
+#
+# 匹配口径（2026-10-20 诱饵测试修正）：以 **`argv[0]`（被调起的程序路径）** 为准，**不**扫整条命令行
+# 子串——否则任何"命令行里提到这些字符串"的进程（如调试用的父 shell `bash -c '... agc_decoy ...'`、
+# 或 `ps | grep MicroXRCEAgent` 的管道）都会被误杀（诱饵测试实测命中父 shell）。守卫（`agc_world` /
+# `agc_car` / `agc_world.sdf`）仍取自整条命令行（它们是**参数**，且足够特异）。
+_SHELL_EXES = ('/bin/bash', '/bin/sh', '/bin/dash', '/usr/bin/bash', '/usr/bin/sh')
+STALE_PROCESS_RULES = (
+    # (argv[0] 必须包含, 附加守卫：整条命令行需同时含其一；空元组 = 无守卫)
+    ('/install/agc_', ()),
+    ('MicroXRCEAgent', ()),
+    ('px4_sitl_default/bin/px4', ()),
+    ('ros_gz_bridge/parameter_bridge', ('agc_world',)),
+    ('tf2_ros/static_transform_publisher', ('agc_car', 'car/')),
+    ('gz sim', ('agc_world.sdf',)),   # gz sim 的 argv[0] 是 ruby，故本规则按整条命令行匹配
+)
+
+
+def sweep_stale_processes(log_path=None):
+    """ADR-0075：运行前清场。返回被 SIGKILL 的 `[(pid, cmdline), ...]`（并追加到 run 日志作审计）。"""
+    me = os.getpid()
+    killed = []
+    for entry in os.listdir('/proc'):
+        if not entry.isdigit() or int(entry) == me:
+            continue
+        try:
+            with open('/proc/%s/cmdline' % entry, 'rb') as f:
+                raw = f.read().decode('utf-8', 'replace').split('\x00')
+        except (OSError, IOError):
+            continue
+        argv0 = raw[0].strip() if raw else ''
+        cmd = ' '.join(x for x in raw if x).strip()
+        if not argv0:
+            continue
+        try:
+            exe = os.readlink('/proc/%s/exe' % entry)
+        except OSError:
+            exe = ''
+        # 规则：argv[0] 命中（`gz sim` 例外——其 argv[0] 为 ruby，改按命令行匹配且**排除 shell**）
+        hit = False
+        for pat, guard in STALE_PROCESS_RULES:
+            if guard and pat == 'gz sim':
+                # ruby 脚本 `gz sim ...`：命令行需含 `gz sim` 与守卫，且本体不是 shell
+                if 'gz sim' in cmd and any(g in cmd for g in guard) and \
+                        exe not in _SHELL_EXES and argv0 not in _SHELL_EXES:
+                    hit = True
+                    break
+                continue
+            if pat in argv0 or pat in exe:
+                if not guard or any(g in cmd for g in guard):
+                    hit = True
+                    break
+        if not hit:
+            continue
+        try:
+            os.kill(int(entry), signal.SIGKILL)
+        except OSError:
+            continue
+        killed.append((int(entry), cmd))
+    if killed and log_path:
+        with open(log_path, 'a') as f:
+            f.write('=== ADR-0075 运行前清场：清理残留进程 %d 个 ===\n' % len(killed))
+            for pid, cmd in killed:
+                f.write('  - pid %d: %s\n' % (pid, cmd))
+    return killed
 
 
 def _reap_process_group(proc, pgid):
@@ -330,19 +430,49 @@ def _reap_process_group(proc, pgid):
     return (not _group_alive(pgid)), proc.returncode
 
 def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers, ready_timeout_s,
-                command_source='rl'):
+                command_source='rl', shield='true', backend='lightweight', target_source='',
+                observe_yaw_mode='', air_tracking_ref='', log_tag='', obs_horizon_s=0.0,
+                start_timeout_s=20.0):
     scenario = registry[scene]['params'].get('run_logger', {}).get('scenario', scene)
     world = os.path.join(ROOT, 'install/agc_sim/share/agc_sim/worlds/agc_world.sdf')
     gz = ('-r -v 3 ' if mode == 'gui' else '-s -r -v 3 ') + world
-    log = os.path.join(out_dir, 'log', 'ep_%s_%d.log' % (scene, seed))
+    # W7-b 臂配对：同一 (scene, seed) 会被**多个臂**各跑一次 → 日志名须带臂标识（否则后跑臂覆盖先跑臂，
+    # 丢失同 run 证据）；缺省空 = 既有单臂调用不变。
+    log = os.path.join(out_dir, 'log', 'ep_%s%s_%d.log' % (
+        (log_tag + '_') if log_tag else '', scene, seed))
     os.makedirs(os.path.dirname(log), exist_ok=True)
+    # ADR-0075：**运行前清场**（本 run 尚未创建任何进程 → 命中者必为上次 run 的残留 / 逃逸孤儿；
+    # 实测污染会使 agent 侧 participant 创建 > PX4 的 1 s 预算 → 全链 infra）。
+    stale_swept = sweep_stale_processes(log)
     # 先建 Monitor、再记墙钟起点、再 Popen：从 episode 一开始就记录 /clock
     mon = Monitor()
     wall_start_s = time.monotonic()
+    # R-031 修正：`wall_start_s` 为 **monotonic**（用于时长），与 `os.path.getmtime`（epoch）**不可比**；
+    # 另记 epoch 起点专供「本 run 的 summary 归属」过滤，避免静默挂到同场景同 seed 的**旧** summary。
+    wall_start_unix_s = time.time()
+    launch_args = ['ros2', 'launch', 'agc_task', 'w6.launch.py',
+                   'backend:=%s' % backend, 'scene:=%s' % scene, 'seed:=%d' % seed,
+                   'gz_args:=%s' % gz, 'command_source:=%s' % command_source,
+                   'shield:=%s' % shield]
+    # W7-b（P1）：观测来源覆盖（仅显式给出时透传，保持既有 W6 调用不变）
+    if target_source:
+        launch_args.append('target_source:=%s' % target_source)
+    # W7-b（P1·甲）：空中机观测偏航模式覆盖（同上：仅显式给出时透传）
+    if observe_yaw_mode:
+        launch_args.append('observe_yaw_mode:=%s' % observe_yaw_mode)
+    # W7-b（P1 公平性修正）：空中机是否使用目标跟踪参考（''=不覆盖；off=固定航迹臂）
+    if air_tracking_ref:
+        launch_args.append('air_tracking_ref:=%s' % air_tracking_ref)
+    # 整链 / 轻量栈都经 world_bringup 追加 `GZ_SIM_SYSTEM_PLUGIN_PATH`（该 launch 以
+    # `EnvironmentVariable` 读取，**未导出即抛异常**）；此处按 archive 脚本先例显式导出，
+    # 使 run 不依赖调用方 shell 环境（本机 gz 插件路径前提）。
+    launch_env = dict(os.environ)
+    plugin_dir = os.path.join(ROOT, 'install', 'agc_sim', 'lib')
+    launch_env['GZ_SIM_SYSTEM_PLUGIN_PATH'] = plugin_dir + (
+        ':' + launch_env['GZ_SIM_SYSTEM_PLUGIN_PATH']
+        if launch_env.get('GZ_SIM_SYSTEM_PLUGIN_PATH') else '')
     proc = subprocess.Popen(
-        ['ros2', 'launch', 'agc_task', 'w6.launch.py',
-         'backend:=lightweight', 'scene:=%s' % scene, 'seed:=%d' % seed, 'gz_args:=%s' % gz,
-         'command_source:=%s' % command_source],
+        launch_args, env=launch_env,
         stdout=open(log, 'w'), stderr=subprocess.STDOUT, start_new_session=True)
     try:
         pgid = os.getpgid(proc.pid)   # R-031：Popen 后即取组 id（防 leader 先死无法反查组）
@@ -350,9 +480,14 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
         pgid = None
 
     result = {'scene': scene, 'seed': seed, 'scenario': scenario,
-              'command_source': command_source,
+              'command_source': command_source, 'shield': shield,
+              'backend': backend, 'target_source': target_source or None,
+              'observe_yaw_mode': observe_yaw_mode or None,
               'expected_terminal': registry[scene].get('expected_terminal'),
-              'expected_reason': registry[scene].get('expected_reason')}
+              'expected_reason': registry[scene].get('expected_reason'),
+              # ADR-0075：运行前清场证据（本次清掉了哪些残留 / 孤儿；空 = 环境本就干净）
+              'stale_swept_pids': [p for p, _ in stale_swept],
+              'stale_swept_cmds': [c for _, c in stale_swept]}
     try:
         ready = wait_ready(mon, ready_timeout_s)
         result['ready'] = ready
@@ -361,11 +496,24 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
         while time.monotonic() < t_settle:
             rclpy.spin_once(mon, timeout_sec=0.1)
         t_start_wall = time.monotonic()   # R-031：start 调用时刻（用于 state 同 episode 关联）
-        ok, msg = mon.start()
+        ok, msg = mon.start(timeout=start_timeout_s)
         result['started'] = bool(ok)
         result['start_message'] = msg
         remaining = max(wall_watchdog_s - (time.monotonic() - wall_start_s), 1.0)
         reached = mon.wait_terminal(remaining)
+        # ADR-0074：终态后**不立即拆除**——继续采到**固定观测时长**（自 start 起、按仿真钟），使
+        # `visibility_metrics`（window_fixed_v1）的分母不随"早成功"截断（消除饱和 / 选择效应）。
+        # 上限仍受墙钟看门狗约束（仿真不推进时如实早停）。
+        if obs_horizon_s > 0 and mon.sim_at_start is not None:
+            t_lim = time.monotonic() + max(
+                wall_watchdog_s - (time.monotonic() - wall_start_s), 1.0)
+            while time.monotonic() < t_lim:
+                rclpy.spin_once(mon, timeout_sec=0.2)
+                if mon.sim is None or (mon.sim - mon.sim_at_start) >= obs_horizon_s:
+                    break
+            result['obs_horizon_s'] = obs_horizon_s
+            result['obs_horizon_reached'] = bool(
+                mon.sim is not None and (mon.sim - mon.sim_at_start) >= obs_horizon_s)
         wall_end_s = time.monotonic()
         result['terminal_state'] = mon.state_name if reached else 'ACTIVE'
         result['reason_code'] = mon.reason
@@ -380,7 +528,7 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
     # R-029/R-031：以唯一 run_id / 创建时间校验同一 run 关联（suffix 容忍，非固定路径猜测）
     pat = os.path.join(ROOT, 'experiments', 'w6-task-eval',
                        '*-%s-%d*/metrics/summary.json' % (scenario, seed))
-    cands = [p for p in glob.glob(pat) if os.path.getmtime(p) >= wall_start_s - 1.0]
+    cands = [p for p in glob.glob(pat) if os.path.getmtime(p) >= wall_start_unix_s - 1.0]
     result['summary_present'] = False
     if cands:
         pat = max(cands, key=os.path.getmtime)
@@ -388,7 +536,7 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
             sm = json.load(f)
         for k in ('run_id', 'episode_id', 'shield_infeasible_rate', 'reset_failure_rate',
                   'reset_retries', 'reset_failed', 'duration_s', 'odom_valid_ratio',
-                  'cmd_vel_rate_hz', 'git_commit'):
+                  'cmd_vel_rate_hz', 'git_commit', 'command_attribution'):
             result[k] = sm.get(k)
         result['summary_path'] = pat
         result['summary_present'] = True
@@ -415,17 +563,53 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
         result['terminal_state'], result['reason_code'], exp_t, exp_r,
         result['wall_elapsed_s'], wall_watchdog_s))
     # R-025：backend/launch 标注 + 明确验收命题
-    result['backend'] = BACKEND
+    #   ⚠ 修正（2026-10-20 自查）：原实现硬写常量 `BACKEND`（= 'lightweight'）→ 经本函数跑的
+    #   **full 链** episode 其 `backend` 与验收命题被标成"轻量栈"（证据标注错误；不影响判定门，
+    #   但会把 full 证据误标为非整链）。改用**调用参数** `backend`。
+    result['backend'] = backend
     result['launch'] = LAUNCH
     result['gui'] = mode
     result['target_motion'] = (registry[scene].get('axes') or {}).get('target_motion')
     # R-026：逐轴覆盖账本（如实标注 not_carried / unsupported / covered）
     result['support_status'], result['axis_coverage'] = axis_coverage(
-        scene, registry, carriers)
-    result['proposition'] = build_proposition(BACKEND, mode, scene, exp_t, exp_r)
+        scene, registry, carriers, backend)
+    result['proposition'] = build_proposition(backend, mode, scene, exp_t, exp_r)
     # R-031：三层验收判定（完整性 + 命题 + 指标有效性全必过）
     result.update(classify_acceptance_layers(result))
     return result
+
+
+# W7-b（2026-10-20，ADR-0075）—— **infra 重试协议**（机器噪声，非实验处理）：
+#   本机 uXRCE-DDS agent 侧创建 participant 的时延**间歇**达 1.7–2.7 s（良好时 0.67–0.73 s），
+#   超过 PX4 客户端**硬编码**的 1000 ms 预算（`uxrce_dds_client.cpp` 的
+#   `uxr_run_session_until_all_status(&session, 1000, ...)`）→ PX4 报 `create entities failed:
+#   participant: 255` 并 `return`（**不**重试）→ 无 `rt/fmu/out/*` writer → 无 `/agc/air/odom`
+#   → 不起飞 → `air_hover_timeout`（INFRA_FAILURE）。
+#   判据**唯一来源** = `agc_rl.termination.classify_episode_outcome` 的 `classification`：
+#   * `classification == 'infra'`（含 `INFRA_FAILURE` 与未达终态的墙钟截断）→ **重试**该 (arm, seed)；
+#   * `classification == 'mission'`（含 `MISSION_FAILED(TIMEOUT)`，契约 C4 超时属任务终态）→ **一律不重试**
+#     （不得以重试掩盖 mission 结果）。
+#   证据纪律：每次尝试**各留产物**——首试沿用原 `log_tag`，第 k 次重试追加 `.r<k>` 后缀（日志不覆盖）；
+#   逐次 run_id / 终态 / 原因记入 `infra_attempts`（审计）；上报结果为**最后一次尝试**。
+def run_episode_with_infra_retry(*args, infra_retries=0, **kwargs):
+    """`run_episode` 的 infra 重试包装（协议见上）。`infra_retries=0` = 关闭（既有行为不变）。"""
+    base_tag = kwargs.get('log_tag', '')
+    attempts = []
+    for k in range(int(infra_retries) + 1):
+        kwargs['log_tag'] = base_tag if k == 0 else '%s.r%d' % (base_tag or 'ep', k)
+        r = run_episode(*args, **kwargs)
+        attempts.append({
+            'attempt': k, 'log_tag': kwargs['log_tag'],
+            'terminal_state': r.get('terminal_state'), 'reason_code': r.get('reason_code'),
+            'classification': r.get('classification'), 'run_id': r.get('run_id'),
+            'summary_path': r.get('summary_path'), 'wall_elapsed_s': r.get('wall_elapsed_s'),
+        })
+        if r.get('classification') != 'infra' or k == int(infra_retries):
+            break
+    r['infra_attempts'] = attempts
+    r['infra_retries_used'] = len(attempts) - 1
+    r['infra_retry_protocol'] = 'ADR-0075（infra 重试上限 %d）' % int(infra_retries)
+    return r
 
 
 def main():
@@ -443,7 +627,21 @@ def main():
     ap.add_argument('--run-id', default=None)
     # W7-a（R5）：命令源单一选择——`rl`（RL 主控）默认 / `baseline`（Navfn + 自研 LQR 离线对照基线）。
     # 由 w6.launch.py 透传至 ground_bringup；缺省 `rl` → 既有 W6 证据行为不变。
-    ap.add_argument('--command-source', default='rl', choices=['rl', 'baseline'])
+    # W7-b（P2 臂 B）：`rl_high` = 高层（拦截点）+ 成熟低层（Navfn + 自研 LQR）。
+    ap.add_argument('--command-source', default='rl', choices=['rl', 'baseline', 'rl_high'])
+    # W7-b（T1/E1，ADR-0070(d)）：安全层开关——`true`（默认，起 collision_monitor）/
+    # `false`（无 shield 对照臂：恒等透传，纯仿真，**不**用于部署）。
+    ap.add_argument('--shield', default='true', choices=['true', 'false'])
+    # W7-b（P1 / T6）：backend 与观测来源覆盖（缺省不变：lightweight / backend 能力表值）。
+    ap.add_argument('--backend', default='lightweight', choices=['lightweight', 'full'])
+    ap.add_argument('--target-source', default='', choices=['', 'air_fusion', 'gt_adapter'])
+    # W7-b（P1·甲）：空中机观测偏航模式覆盖（''=air.yaml 默认 velocity）
+    ap.add_argument('--observe-yaw-mode', default='', choices=['', 'velocity', 'target'])
+    # ADR-0074：终态后继续采到**固定观测时长**（自 start 起、仿真钟秒；0=旧行为，终态即拆）
+    ap.add_argument('--obs-horizon-s', type=float, default=0.0)
+    # 放宽（2026-10-20）：/agc/task/start 等待上限（s）——须 ≥ task_manager 的 air_hover_timeout_s
+    # （PX4 慢热时 start 事务内含悬停等待；缺省 60 > 45）。
+    ap.add_argument('--start-timeout-s', type=float, default=60.0)
     args = ap.parse_args()
 
     wall_watchdog_s = args.wall_watchdog_s if args.wall_watchdog_s is not None else args.timeout
@@ -480,7 +678,11 @@ def main():
                 scene, seed, args.command_source))
             r = run_episode(scene, seed, registry, args.mode, wall_watchdog_s, out_dir, carriers,
                             ready_timeout_s=args.ready_timeout_s,
-                            command_source=args.command_source)
+                            command_source=args.command_source, shield=args.shield,
+                            backend=args.backend, target_source=args.target_source,
+                            observe_yaw_mode=args.observe_yaw_mode,
+                            obs_horizon_s=args.obs_horizon_s,
+                            start_timeout_s=args.start_timeout_s)
             print('  terminal=%s reason=%s expected_match=%s pass=%s integrity=%s outcome_class=%s shield=%s reset=%s'
                   % (r.get('terminal_state'), r.get('reason_code'), r.get('expected_match'),
                      r.get('pass'), r.get('layer_integrity'), r.get('outcome_class'),
@@ -499,6 +701,8 @@ def main():
         'backend': BACKEND, 'launch': LAUNCH,
         # W7-a（R5）：命令源（rl | baseline）——baseline = Navfn + 自研 LQR 离线对照基线。
         'command_source': args.command_source,
+        # W7-b（T1/E1）：安全层开关（true=有 shield / false=无 shield 对照臂）
+        'shield': args.shield,
         'git_commit': next((e.get('git_commit') for e in episodes if e.get('git_commit')), 'unknown'),
         'n_episodes': len(episodes),
         # R-031：C9 两指标（均值仅基于**有效**样本；缺失 / not_applicable 如实标注，不以 0 冒充）

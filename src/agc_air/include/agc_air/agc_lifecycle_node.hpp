@@ -109,14 +109,17 @@ protected:
 private:
   CallbackReturn on_configure(const rclcpp_lifecycle::State &) final
   {
-    const CallbackReturn r = on_configure_impl();
-    if (r == CallbackReturn::SUCCESS) {createBond();}
-    return r;
+    // ADR-0080：bond **不**在 configure 创建——Nav2 manager 只在 activate 时才建立其侧 bond；
+    //   在 configure 开始计时会在"配置→激活"间隔 > 4 s 时误触发 broken → 失效停机。
+    return on_configure_impl();
   }
   CallbackReturn on_activate(const rclcpp_lifecycle::State &) final
   {
     const CallbackReturn r = on_activate_impl();
-    if (r == CallbackReturn::SUCCESS) {startBondWatchdog();}
+    if (r == CallbackReturn::SUCCESS) {
+      createBond();   // 与 manager 的 activate 侧 bond 同拍建立
+      startBondWatchdog();
+    }
     return r;
   }
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) final

@@ -3,3 +3,8 @@
 com_of_loss_t: 1.0    # COM_OF_LOSS_T（s）：offboard 丢失判定超时（PX4 v1.15.4 默认 1.0）
 com_obl_rc_act: 0     # COM_OBL_RC_ACT：offboard 丢失后动作（0=Position → nav_state POSCTL=2）
 nav_dll_act: 0        # NAV_DLL_ACT：数据链丢失动作（0=Disabled；因子③未实现，仅如实标注）
+# 仿真唯一时间源（W7-b 取证，2026-10-19）：**关闭 uXRCE-DDS 桥时间同步**，令 PX4/uORB 与 ROS
+# 都以 gz `/clock` 为时间基准。PX4 官方文档明示该同步「在仿真中可/应禁用」。实测开着同步时，
+# 桥会把 PX4 时间戳推到墙上时钟尺度，与仿真时钟共享的映射产生**离奇/负**时间戳
+# （`sec≈−1.7e9` / `+8.5e7`），导致下游年龄门失效、`rclcpp::Time` 负值崩溃。
+uxrce_dds_synct: 0    # UXRCE_DDS_SYNCT：0=禁用桥时间同步（仿真）；1=PX4 默认（启用）

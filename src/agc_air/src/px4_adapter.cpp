@@ -46,6 +46,9 @@ protected:
     world_frame_ = declare_param_idempotent<std::string>("world_frame", "world");
     base_frame_ = declare_param_idempotent<std::string>("base_frame", "drone/base_link");
     time_alpha_ = declare_param_idempotent<double>("time_offset_alpha", 0.05);
+    // W7-b 取证：PX4→ROS 时间映射的**合理性界**（s）——映射结果与 `now()` 的偏差超过它即判
+    // 不可信（拒发该帧 + 重锚）。默认 5.0 s：远大于正常帧龄（≤ 数十 ms），又能拦住尺度跳变。
+    stamp_max_skew_s_ = declare_param_idempotent<double>("stamp_max_skew_s", 5.0);
     // 局部原点（R-003）：PX4 odom 的 position 相对 EKF 全局原点，非 gz 世界坐标。
     // 该原点 = 首次定位时刻的机体位置（SITL 下即 spawn 位），由 launch 以 spawn 位姿单一注入。
     const auto origin_pose = declare_param_idempotent<std::string>("origin_pose", "0,0,0.2,0,0,0");
@@ -117,14 +120,40 @@ private:
 
     const std::uint64_t px4_us = m.timestamp;
     // EKF 复位检测（R-003）：reset_counter 变化意味着局部原点/姿态可能跳变，世界坐标须重新标定。
+    // W7-b 取证：EKF 复位同时**丢弃时间锚定**（局部原点与时间基准同源，都会随之跳变）。
     if (m.reset_counter != reset_counter_) {
       RCLCPP_WARN(
-        get_logger(), "EKF 复位计数 %u → %u：局部原点可能跳变，世界坐标需重新标定（R-003）",
-        reset_counter_, m.reset_counter);
+        get_logger(), "EKF 复位计数 %u → %u：局部原点可能跳变，世界坐标需重新标定（R-003）；"
+        "同时重锚 PX4→ROS 时间映射", reset_counter_, m.reset_counter);
       reset_counter_ = m.reset_counter;
+      mapper_.reset();
     }
 
-    mapper_.observe(px4_us, now().nanoseconds() / 1000);
+    // W7-b 取证（整链 full）：先用**当前**估计映射并做**合理性校验**——非负且与 `now()` 的偏差
+    // 在 `stamp_max_skew_s` 内。实测 uXRCE-DDS 桥时间同步与仿真 `/clock` 打架时，会产出
+    // `sec≈−1.7e9` / `+8.5e7` 的脏 stamp，令下游 `rclcpp::Time(stamp)` 抛
+    // "cannot store a negative time point"（**整节点崩溃**）与年龄门失效。
+    // 处置：**拒发该帧** + 一次性如实告警 + **重锚**（丢弃被污染的偏移，下一帧自愈）——
+    // **不**静默替换为其它时刻（R-004 源采样时刻语义不许伪装）。
+    const std::int64_t now_ns = now().nanoseconds();
+    if (mapper_.valid()) {
+      const std::int64_t ros_ns = mapper_.toRosNanoseconds(px4_us);
+      const double skew_s =
+        std::fabs(static_cast<double>(ros_ns - now_ns)) * 1e-9;
+      if (ros_ns < 0 || skew_s > stamp_max_skew_s_) {
+        if (!warned_bad_stamp_) {
+          warned_bad_stamp_ = true;
+          RCLCPP_WARN(
+            get_logger(),
+            "PX4 odom 时间映射不可信（px4_us=%llu → ros=%.3f s，与 now 偏差 %.3f s > %.1f s）"
+            "→ 拒发该帧并重锚时间映射（时间源尺度可能跳变；R-004 不静默替换）",
+            static_cast<unsigned long long>(px4_us), ros_ns * 1e-9, skew_s, stamp_max_skew_s_);
+        }
+        mapper_.reset();
+        return;
+      }
+    }
+    mapper_.observe(px4_us, now_ns / 1000);
     if (!mapper_.valid()) {return;}
 
     const agc_air::Vector3 pos_ned(m.position[0], m.position[1], m.position[2]);
@@ -172,6 +201,8 @@ private:
 
   std::string odom_in_, status_in_, odom_out_, status_out_, world_frame_, base_frame_;
   double time_alpha_{0.05};
+  double stamp_max_skew_s_{5.0};
+  bool warned_bad_stamp_{false};
   agc_air::Vector3 origin_enu_{agc_air::Vector3::Zero()};
   std::uint8_t reset_counter_{0};
   agc_air::Px4TimeMapper mapper_;
