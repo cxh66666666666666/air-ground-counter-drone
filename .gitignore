@@ -10,9 +10,8 @@
 # ===== 归档旧树（只读，不纳入版本控制）=====
 /reference/
 
-# ===== 实验产物：仅 README 与各 run 的 config 快照入库（ADR-0007）=====
-/experiments/*/*/*
-!/experiments/*/*/config/
+# ===== 实验产物：仅本地保留，不入版本库（ADR-0081）=====
+/experiments/
 
 # ===== 证据不可变归档：大归档与侧车不入 git（ADR-0064）=====
 /experiments/_archive/
@@ -26,3 +25,6 @@ __pycache__/
 
 # ===== 编辑器 / IDE 本地设置（个人偏好，不入库）=====
 .vscode/
+
+# ===== 本地 Agent 工作流与 workstream 规格（公开仓库不发布，ADR-0081）=====
+/.trae/
