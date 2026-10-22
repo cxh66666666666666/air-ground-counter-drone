@@ -67,7 +67,7 @@ accepted
 
 ### (f) 裁定结论（**部分**）
 
-- **P2**：臂 A / 臂 B 均**可运行**且达任务出口 → 具备开展等预算对比的条件；**判定未执行**（无预注册阈值下的对比）。
+- **P2**：臂 A / 臂 B 均**可运行**；v2 批次（2026-10-22）因**臂信息不等价**（A 为 oracle 固定目标）+ **primary DV 终态后污染**被判为 **confounded**，**不作为 P2 判定证据**（[ADR-0083](0083-w7b-p2-arm-information-equivalence-and-active-window-fco.md)）；v3（同源感知目标 + active-window FCO）已执行 N=20 并判定：**证伪（primary 方向为负且显著）→ 保留 c2**（见 (j)）；主控仍按 [ADR-0004](0004-rl-primary-controller-nav2-safety-layer.md) 保持 c2（未改判）。
 - **P1**：整链**已具备承载**（(g)）；配对 run 与判定已分别在 (h) 与其**修订**子节执行（后者为新终态语义下的现行结论）。
 - **火控**：占位升级为最小动态火控，且**任务难度已冻结**（(b)）。
 
@@ -148,6 +148,44 @@ accepted
 - **环境边界（如实登记，不修改）**：本判定在 `range_max=12 m`、空中站距带 `[8,15] m` 下取得；超出量程的时段对两臂**对称**且已由 `visibility_rate` 计入。该几何盲区不构成臂间偏差，故保留现配置；批次产物 `metrics/perception_health.json` 自动报告 `rmax/no_pose/fov` 占比（[ADR-0080](0080-air-lifecycle-startup-robustness.md)）。
 - **取代关系**：本节取代"修订一"与"修订二"的数值（前两批次分别受 ADR-0078 / B2 火控缺陷影响，仅作历史留痕）。
 
+### (i) P2 v2 批次**已执行但判为 confounded**（2026-10-22；预注册 v2；**不作判定**）
+
+> **2026-10-22 审计更新**：本批次因臂信息不等价（A 只订 `/agc/ground/goal`；s08 固定目标 = 目标真值；B 订 `/agc/targets`）与 primary DV 终态后污染（约 97%/100% 机会拍在终态之后）判为 **confounded**；以下数值仅作历史 / 探索证据，**不**构成 P2 成立或证伪。现行 P2 = v3 已执行并判定（见 (j)；[ADR-0083](0083-w7b-p2-arm-information-equivalence-and-active-window-fco.md)）。
+
+- **承载 run**：`w7-rl-b/20261022-w7-rl-b-112833-1155`（`backend:=full` / `s08_static_none_nominal_capture` / seeds 0–19 / CRN 同 seed 配对 / 40 episodes / 墙钟 2.37 h）；判定产物同 run `metrics/p2_adjudication.json`；脚本 [`scripts/w7b_p2_adjudicate.py`](../../scripts/w7b_p2_adjudicate.py)。
+- **臂与条件**：臂 A `p2_c2_low_level`（`command_source=rl`，直接出 `cmd_vel`）；臂 B `p2_rl_high`（**规则高层**拦截点 + 成熟低层 Navfn+LQR，[ADR-0082](0082-w7b-p2-arm-b-rule-high-level-first.md)）；固定协同、同安全层 / 唯一执行口 / 终态；两臂训练 / 调参预算均为 0，推理算力单列、不声称等算力。
+- **结果**：
+
+| DV | 角色 | n 配对 | 剔除 | 均值配对差 (B−A) | 95% CI | 配对 t p | Wilcoxon p | 判定 |
+|---|---|---|---|---|---|---|---|---|
+| `fire_control_opportunity_rate` | primary | 20 | 0 | **−0.0697** | [−0.2528, +0.1135] | 0.436 | 0.658 | **未达 MDE=0.20 / 不显著 → P2 证伪** |
+| `min_clearance` | secondary | 20 | 0 | +0.2182 | [−0.5590, +0.9954] | 0.564 | 0.294 | 不显著（仅报告） |
+
+- **审计敏感性（2026-10-22）**：active-window FCO（`episode_window_metrics`，GROUND_APPROACH→终态）A 0.109 vs B 0.042，Δ = −0.067，n=19（剔除 infra seed 8），p = 0.029；方向仍为 B 不优，但 v2 primary 的约 97%/100% 机会拍来自终态后，故 v2 数值不可作为判定。**A 另有 oracle 目标信息优势**（`goal_follow_target=false` + goal=目标真值），v2 不可读作职责分层结论。
+- **各臂画像**：臂 A **16/20 `INTERCEPT_CONFIRMED` + 4×`MISSION_FAILED(TIMEOUT)`**（seeds 3/8/11/13），`fco` 均值 0.376（含 4 个失败零填；成功回合 0.470）、`visibility` 0.871、`min_clearance` 4.868；臂 B **19/20 `INTERCEPT_CONFIRMED` + 1×`ACTIVE`**（seed 8，infra 重试 3 次耗尽），`fco` 均值 0.306（含 infra 零填；成功回合 0.322）、`visibility` 0.924、`min_clearance` 5.086。任务成功率 B 更高仅作画像，**不**作为 P2 判定依据；primary 为 FCO rate（与 P1 同口径）。
+- **口径纪律**：primary 的失败 / infra / 缺值按 0 计入分母（`primary_honored=true`、剔除 **0** 对、零填 **5** = 臂 A 4 个失败 + 臂 B 1 个 infra）；终态 infra **1/40**（B seed 8），**10** 个 `(arm, seed)` 触发重试（A 5 / B 5，单条最多 3 次），单列、不计作臂效应（[ADR-0075](0075-uxrce-entity-creation-intermittent-failure-and-infra-retry.md)）。
+- **结论（已撤销）**：v2 的"证伪"**不成立**——本批次未隔离 IV，且 primary 被终态后停泊污染（[ADR-0083](0083-w7b-p2-arm-information-equivalence-and-active-window-fco.md)）。**P2 当前状态 = v3 已执行并判定（见 (j)）**；主控仍按 [ADR-0004](0004-rl-primary-controller-nav2-safety-layer.md) 保持 c2。臂 B 为**规则高层**，本记录**不**回答"训练 RL 是否优于 c2"；训练 RL 仍按 [ADR-0082](0082-w7b-p2-arm-b-rule-high-level-first.md)(d) 后置。
+- **解释边界**：任务成功率 B 19/20 > A 16/20，但 primary FCO rate 不显著且均值差为负；本判定**不**主张 B 更差，只主张"**B 的优越性未成立**"。若后续以任务成功率为决策终点，须**新预注册**（不得事后改 primary）。
+- **未决 / 后续**：消融（协同观测 / 目标预测）与 W7-c 多 worker 仍未执行。
+
+### (j) P2 v3 判定**已执行**（2026-10-22；预注册 v3；**现行 P2 结论**）
+
+- **承载 run**：`w7-rl-b/20261022-w7-rl-b-v3-n20r`（`backend:=full` / `s08_static_none_nominal_capture` / seeds 0–19 / CRN 同 seed 配对 / 40 episodes / 墙钟 2.39 h）；判定产物同 run `metrics/p2_adjudication.json`。
+- **设计修正**（[ADR-0083](0083-w7b-p2-arm-information-equivalence-and-active-window-fco.md)(b)(c)(g)）：两臂 `goal_follow_target=true`（同源感知目标）；primary 改 **active-window FCO**（`GROUND_APPROACH → 终态`，不含终态后停泊）；臂 B 高层加目标低通 + 前向限幅；预注册 v3（N=20 / α=0.05 / MDE=0.10）。
+- **结果**：
+
+| DV | 角色 | n 配对 | 剔除 | 均值配对差 (B−A) | 95% CI | 配对 t p | Wilcoxon p | 判定 |
+|---|---|---|---|---|---|---|---|---|
+| `fire_control_opportunity_rate_active` | primary | 20 | 0 | **−0.0561** | [−0.0971, −0.0151] | **0.010** | 0.011 | **未达 MDE=0.10（方向为负且显著）→ P2 证伪、保留 c2** |
+| `min_clearance_m` | secondary | 20 | 0 | −0.0879 | [−0.5920, +0.4161] | 0.719 | 0.985 | 不显著（仅报告） |
+
+- **各臂画像**：臂 A **19/20 `INTERCEPT_CONFIRMED`** + 1×`MISSION_FAILED(TIMEOUT)`（seed1）；臂 B **17/20** + 3×`MISSION_FAILED(TIMEOUT)`（seeds 1/5/15；seed5 `min_clearance=0.685 m`，如实登记）。终态 infra **0/40**；两臂 `goal_follow_target=true` 均生效；`layer_integrity` 全 true。
+- **口径纪律**：primary 的失败 / infra / 缺值按 0 计入分母（`primary_honored=true`、剔除 **0** 对、零填 **4** = A seed1 + B seed1/5/15）；n=20 与预注册一致；两臂均触发过 infra 重试（A 6 / B 13 次），终态 infra 0。
+- **描述性对照（legacy）**：`window_fixed_v1` 的 `fire_control_opportunity_rate` A 0.621 vs B 0.221，Δ = −0.400（p≈0）；该口径约 97%/100% 机会拍来自终态后停泊，**不参与 v3 判定**，仅说明 v2 的 DV 污染。
+- **结论**：按 v3 预注册，**P2 未达优越性判据 → 证伪；保留 c2**（[ADR-0004](0004-rl-primary-controller-nav2-safety-layer.md) 不变）。本轮 primary **方向为负且显著**（B 的 active-window FCO 低于 A），但效应量 **0.056 < MDE 0.10**；不得以此表述"B 在任务成功率上更差"（A 19/20 vs B 17/20 仅作画像，且 seed1 为共因失败）。臂 B 为**规则高层**，本判定**不**回答"训练 RL 是否优于 c2"；训练 RL 仍按 [ADR-0082](0082-w7b-p2-arm-b-rule-high-level-first.md)(d) 后置。
+- **解释边界**：两臂同源感知目标 / 同安全层 / 唯一执行口 / 终态；B 的 3 个失败与较低 active FCO 是该架构在本场景、本预算下的实测结果。若要改以"任务成功率 / 捕获时长"为决策终点，须**新预注册**，不得事后改 primary。
+- **证据链**：v3 预注册在 run 前写定（本会话工作区；文件 mtime 早于 run；git 提交待固化）；v2 run `20261022-w7-rl-b-112833-1155` 仍为 confounded / invalidated（(i)）。
+
 ## 备选
 
 1. **让火控自动开火（不改任务难度）** —— 否决：会使跟踪类场景结局漂移（W6 回归破），且 F-11 要求替换后冻结难度。
@@ -157,8 +195,8 @@ accepted
 ## 后果
 
 - **正面**：E1–E5 有证据；臂可运行；火控升级的**行为变更**被显式裁定而非静默；待建臂显式登记；整链入口（控制权交接 + 观测链）已**评价可用**（(g)）。
-- **代价 / 限制**：P1 已在新终态语义下重跑并判定（(h) 修订子节）→ W7-b 出口**部分达成**（P2 判定、消融未执行）；依赖 `/agc/air/odom` 姿态的**旧证据须重验**（[ADR-0072](0072-px4-attitude-quaternion-field-order-and-full-chain-observation-fix.md)(c)）。
-- **未决 / 后续**：`s12` 的 `interception_authorized` 与里程碑语义一致性；P2 预注册对比（c2 / 高层 RL）；协同观测 / 目标预测消融定义；高层策略由规则升级为 RL；W7-c 多 worker。
+- **代价 / 限制**：P1 已在新终态语义下重跑并判定（(h) 修订子节）→ W7-b 出口**部分达成**（P2 v2 批次 confounded；v3 已判定证伪、保留 c2；消融未执行）；依赖 `/agc/air/odom` 姿态的**旧证据须重验**（[ADR-0072](0072-px4-attitude-quaternion-field-order-and-full-chain-observation-fix.md)(c)）。
+- **未决 / 后续**：`s12` 的 `interception_authorized` 与里程碑语义一致性；协同观测 / 目标预测消融定义；训练 RL 高层（[ADR-0082](0082-w7b-p2-arm-b-rule-high-level-first.md) 裁定 P2 v1 **不**升级）；W7-c 多 worker；P1 fixed vs active 窗口敏感性复核（W8 前）。
 
 ## 参考
 

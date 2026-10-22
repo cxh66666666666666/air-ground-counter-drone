@@ -55,6 +55,14 @@ def dv_value(row, key, zero_on_fail):
     return float(v), False
 
 
+def is_infra(row):
+    """最终尝试为 infra（含重试耗尽后的 ACTIVE）——infra 单列，不读作臂效应。"""
+    if row.get('terminal_state') == 'INFRA_FAILURE':
+        return True
+    attempts = row.get('infra_attempts') or []
+    return bool(attempts) and attempts[-1].get('classification') == 'infra'
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--campaign', default='w7-rl-b')
@@ -82,7 +90,10 @@ def main():
     from scipy import stats
 
     out = {'run_id': args.run_id, 'campaign': args.campaign,
-           'prereg_version': pre['version'], 'prereg_status_before': pre['status'],
+           # P1 的注册版本 = 分命题版本（v2 只补 P2，不回写 P1）；文件版本单列。
+           'prereg_version': pre.get('proposition_versions', {}).get('p1', pre['version']),
+           'prereg_file_version': pre['version'],
+           'prereg_status_before': pre['status'],
            'alpha': alpha, 'min_detectable_effect': mde,
            'n_paired_episodes_per_arm_prereg': n_req,
            'coop_arm': args.coop_arm, 'noncoop_arm': args.noncoop_arm,
@@ -96,7 +107,7 @@ def main():
             c, n = by.get((args.coop_arm, s)), by.get((args.noncoop_arm, s))
             if not c or not n:
                 continue
-            if c['terminal_state'] == 'INFRA_FAILURE' or n['terminal_state'] == 'INFRA_FAILURE':
+            if is_infra(c) or is_infra(n):
                 n_infra += 1
             cv, c_deg = dv_value(c, dv_key, zof)
             nv, n_deg = dv_value(n, dv_key, zof)
@@ -151,6 +162,7 @@ def main():
     p1_rows = [r for r in arms['arms'] if r['arm'] in (args.coop_arm, args.noncoop_arm)]
     out['infra_report'] = {
         'n_runs_infra_terminal': sum(1 for r in p1_rows if r['terminal_state'] == 'INFRA_FAILURE'),
+        'n_runs_final_infra': sum(1 for r in p1_rows if is_infra(r)),
         'n_runs_used_infra_retry': sum(1 for r in p1_rows if (r.get('infra_retries_used') or 0) > 0),
         'max_infra_retries_used': max([(r.get('infra_retries_used') or 0) for r in p1_rows] or [0]),
         'policy': 'ADR-0075（分类判据=agc_rl.termination；infra 重试上限见 arms.json 的 infra_retry_protocol）',

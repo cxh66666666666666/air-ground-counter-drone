@@ -3,20 +3,161 @@
 # 本文件在**确证实验之前**写定判定规则 / 样本量 / 显著性阈值；运行顺序即证据：
 # 预注册文件（git 提交时间）**早于**确证 run（`experiments/w7-rl-b/<run_id>`）。
 # 承重实验**不得**事后改阈值（[F-13](docs/reviews/agc-review-2026-10-14/30-未来.md#f-13)：防选择偏差 / 制造假改进）。
+# 变更须升 `version`；旧版在 `history` 保留，P1 的已执行口径不随 v2 回溯改写。
 w7b_prereg:
   # 预注册口径版本（变更须新版本号，旧版保留）。
-  version: 1
+  version: 3
+  # 分命题注册版本（P1 已按 v1 执行；v2 只补 P2 细则；v3 修 P2 臂信息等价 + FCO 口径，不回写 P1）。
+  proposition_versions:
+    p1: 1
+    p2: 3
+  history:
+    - version: 1
+      date: 2026-10-19
+      scope: "P1 / P2 初始预注册；P1 在该版本下完成 N=20 配对判定（ADR-0071(h)）；P2 只有判定方向，未写 DV / 等预算细则"
+    - version: 2
+      date: 2026-10-21
+      scope: "补齐 P2 的 DV 操作化、等预算口径与固定条件；臂 B 为规则高层（ADR-0082）；P1 判定规则与阈值不变"
+    - version: 3
+      date: 2026-10-22
+      scope: "P2 修正（ADR-0083）：①臂信息等价——A 不再用真值固定目标，两臂任务目标同源 /agc/targets（goal_follow_target=true）；②primary DV 改为 active-window FCO（不含终态后停泊）；v2 批次 20261022-w7-rl-b-112833-1155 标记为 confounded，不作为 P2 判定证据；P1 口径不变"
   # —— 判定规则 ——
   # P1 协同收益（主线）：协同臂在预注册样本 + 置信区间下显著优于**非协同**（有效火控机会 / 最小净空）。
-  # P2 RL 职责分层（副线）：臂 B（高层 + 成熟低层）在**等预算**下显著优于臂 A（c2）。
+  # P2 RL 职责分层（副线）：臂 B（规则高层 + 成熟低层）在**等预算**下显著优于臂 A（c2）。
   # 失败判据：不显著 → 对应命题**证伪**（P2 证伪 ⇒ **保留 c2**，不推翻 ADR-0004）。
   decision:
     p1: "cooperative > non_cooperative (fire_control_opportunity_rate, min_clearance)"
-    p2: "high_level > c2 (equal budget)"
+    p2:
+      rule: "high_level > c2 (equal budget)"
+      arms:
+        a: p2_c2_low_level
+        b: p2_rl_high
+      direction: "b_minus_a"
+      primary_dv: fire_control_opportunity_rate_active
+      secondary_dv: min_clearance_m
+      test: "two_sided_paired_t"
+      criterion: "p < statistics.p2.alpha AND mean(delta) >= statistics.p2.min_detectable_effect"
+      falsification: "high_level 不显著优于 c2 → 保留 c2（不推翻 ADR-0004）"
+      claim_scope: "职责分层（规则高层 + 成熟低层 vs c2）；不得声称训练 RL 优于 c2（ADR-0082）"
+      registered_version: 3
+      status: "executed_falsified"      # v3 已执行并判定（见 executed_v3）；v2 批次 confounded
+      invalidated_runs:
+        - run_id: "20261022-w7-rl-b-112833-1155"
+          version: 2
+          status: "confounded"
+          reasons:
+            - "臂信息不等价：A 的 c2 只订 /agc/ground/goal；s08 goal_follow_target=false 且 goal=目标真值 (4.5,3.0)；B 订 /agc/targets（感知）"
+            - "primary DV 终态后污染：window_fixed_v1 的 60 s 窗包含终态后停泊；约 97%（A）/100%（B）的机会拍在终态之后"
+          evidence: "docs/adr/0083-w7b-p2-arm-information-equivalence-and-active-window-fco.md"
+      executed_v3:
+        run_id: "20261022-w7-rl-b-v3-n20r"
+        date: "2026-10-22"
+        verdict: "证伪（primary 方向为负且显著；未达 MDE=0.10 → 保留 c2）"
+        n_paired: 20
+        primary:
+          dv: fire_control_opportunity_rate_active
+          mean_delta_b_minus_a: -0.056082
+          ci95: [-0.097101, -0.015063]
+          paired_t_p_two_sided: 0.009985
+          wilcoxon_p_two_sided: 0.011236
+          zero_filled_values: 4
+        secondary:
+          dv: min_clearance_m
+          mean_delta_b_minus_a: -0.087932
+          paired_t_p_two_sided: 0.719044
+        legacy_fixed_window:
+          dv: fire_control_opportunity_rate
+          mean_delta_b_minus_a: -0.4004
+          note: "仅描述；终态后停泊污染，未参与 v3 判定"
+        note: "两臂 goal_follow_target=true、同源感知目标；终态 infra 0/40；A 19/20、B 17/20"
     falsification:
       p1: "cooperative 不显著优于 non_cooperative → 协同收益证伪"
       p2: "high_level 不显著优于 c2 → 保留 c2"
-  # —— 样本量 / 显著性（**依效应大小**在确证实验前设定；此值为当前设定，改动即升 version）——
+
+  # —— P2 固定条件（两臂只差 IV = 命令源；固定协同）——
+  # 全链（含空中协同观测）才能令「固定协同」成立；轻量栈无空中域，不能承载 P2 确证。
+  p2_conditions:
+    scene: s08_static_none_nominal_capture
+    backend: full
+    cooperative: true
+    target_source: air_fusion
+    observe_yaw_mode: target
+    air_tracking_ref: "on"
+    # v3（ADR-0083）：两臂任务目标同源感知目标；A 不再使用固定真值目标。
+    task_goal_follow_target: true
+    task_goal_source: "/agc/targets（air_fusion）"
+    obs_horizon_s: 60.0
+    shield: true
+    terminal_semantics: "docs/ROS2迁移交接文档.md#terminal-semantics"
+    execution_port: "docs/ROS2迁移交接文档.md#execution-port"
+    cooperative_reference: "P1 p1_coop（ADR-0071(h)）"
+    iv:
+      a:
+        command_source: rl
+        role: "c2：策略直接出 cmd_vel；任务目标 = 感知目标（goal_follow_target=true）"
+      b:
+        command_source: rl_high
+        role: "规则高层出拦截点；低层 Navfn + 自研 LQR"
+
+  # —— P2 DV 操作化（ADR-0070(b) 分层多指标；与 P1 同口径以保可比）——
+  p2_dv:
+    primary:
+      # v3（ADR-0083）：active 窗口 = GROUND_APPROACH → 终态；不含终态后停泊。
+      # 由 episode_window_metrics（window_active_v1）派生；v2 的 window_fixed_v1 仅保留为描述量。
+      field: fire_control_opportunity_rate_active
+      source: "episode_window_metrics.ticks_fire_control_opportunity / vis_ticks_total"
+      unit: "active 窗口内有效火控机会拍占比"
+      failure_handling: "超时 / 失败 / infra 及其缺值 → 0，计入分母（keep_all_failures_and_infra）；成功回合缺值 → 剔除该配对并计数"
+      rationale: "任务出口经失败计 0 进入主量；只计任务进行中的机会，避免 window_fixed_v1 在终态后停泊期间继续累计（v2 实测约 97%/100% 机会拍在终态后）"
+    legacy:
+      field: fire_control_opportunity_rate
+      role: "描述量（window_fixed_v1，60 s；不参与 v3 判定）"
+    secondary:
+      field: min_clearance_m
+      unit: "m"
+      failure_handling: "失败回合仍有真实净空；仅缺值配对剔除并计数"
+      role: "报告 + 安全权衡解释；不参与显著性判定"
+    descriptive:
+      - terminal_state
+      - expected_match
+      - visibility_rate
+      - shield_infeasible_rate
+      - intervened_ticks
+      - wall_elapsed_s
+      - rtf
+      - active_window_ticks
+      - fire_control_opportunity_rate   # legacy（window_fixed_v1）
+    infra:
+      listed_separately: true
+      retry_protocol: "ADR-0075"
+
+  # —— 等预算口径（ADR-0082(c)）——
+  # 等预算 = 等训练 / 调参预算 + 等评估预算；推理算力属架构成本，单列报告，不声称等算力。
+  equal_budget:
+    training_tuning:
+      training_steps: 0
+      tuning_trials: 0
+      applies_to: [p2_c2_low_level, p2_rl_high]
+    evaluation:
+      n_paired_episodes_per_arm: 20
+      same_seeds: true
+      same_scene: true
+      same_timeout: true
+      same_episode_wall_watchdog: true
+      same_obs_horizon: true
+      same_sensor_permission: true
+      same_speed_constraints: true
+      same_safety_layer: true
+      same_terminal_semantics: true
+      same_execution_port: true
+    inference_compute:
+      equalized: false
+      reason: "臂 B 多一层规划 + LQR，属架构成本；等算力不可定义且不应伪造"
+      report: [wall_elapsed_s, rtf]
+    note: "两臂均无学习权重与逐臂调参；评估使用同 seed 集合 / 同 timeout / 同 episode 数"
+
+  # —— 样本量 / 显著性（依效应大小在确证实验前设定；此值为当前设定，改动即升 version）——
+  # 顶层字段 = P1 已执行口径（v1，**不**回写）；P2 用下方 `statistics.p2`。
   statistics:
     # 每臂配对 episode 数（[F-07](docs/reviews/agc-review-2026-10-14/30-未来.md#f-07) 三级种子 + CRN 配对）。
     n_paired_episodes_per_arm: 20
@@ -24,10 +165,25 @@ w7b_prereg:
     alpha: 0.05
     # 目标把握度。
     power: 0.80
-    # 最小感兴趣效应（有效火控机会率的绝对提升）。
+    # 最小感兴趣效应（有效火控机会率的绝对提升；P1 口径）。
     min_detectable_effect: 0.10
+    min_detectable_effect_unit: "absolute_rate"
     # 区间估计：报告置信区间（不剔除失败 / infra，如实计入分母）。
     report_confidence_interval: true
+    confidence_level: 0.95
+    # 次量只报告，不参与 P2 显著性判定。
+    secondary_in_decision: false
+    # P2（v2 新增）：阈值依**已有配对差 SD** 设定，避免沿用 P1 的 0.10 造成低把握度。
+    p2:
+      n_paired_episodes_per_arm: 20
+      alpha: 0.05
+      power: 0.80
+      min_detectable_effect: 0.10
+      min_detectable_effect_unit: "absolute_rate"
+      power_basis: "v3 active-window FCO 的配对差 SD=0.1224（v2 run 20261022-w7-rl-b-112833-1155，n=19，剔除 infra seed8；仅作规划估计，不入判定）；paired t：α=0.05 双侧、N=20 → MDE≈0.078；取 MDE=0.10（更保守），N=20 时实际 power≈0.97。"
+      report_confidence_interval: true
+      confidence_level: 0.95
+      secondary_in_decision: false
   # —— 口径纪律 ——
   policies:
     timeout_is_failure: true          # 契约 C4
@@ -36,5 +192,5 @@ w7b_prereg:
     same_seed_paired: true            # 同 seed 配对（CRN）
     no_bitwise_physics_claim: true    # 不承诺 bitwise 物理一致（W7-a 已知边界）
   # —— 状态 ——
-  status: "pre_registered"            # 确证实验**未执行**（见 ADR-0071）
-  note: "臂可运行性证据（R1–R3）已取得（ADR-0071）；本预注册针对**确证对比**，其 run 尚未执行。"
+  status: "executed"                  # P1 v1 已判定；P2 v3 已执行并判定（证伪，保留 c2）；v2 confounded
+  note: "P1 已在新终态语义下执行并判定（ADR-0071(h)）；P2 臂 B 为规则高层（ADR-0082）；P2 v2 批次因臂信息不等价 + DV 终态后污染被判为 confounded（ADR-0083）；P2 v3 已按 active-window FCO + 同源感知目标执行 N=20 并判定：证伪（primary 方向为负且显著）→ 保留 c2（ADR-0071(j)）。"

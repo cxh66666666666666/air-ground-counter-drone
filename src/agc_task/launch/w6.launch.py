@@ -80,6 +80,10 @@ def _compose(context, *args, **kwargs):
     # W7-a（R3）：训练视图开关——显式设置时按 seed 随机化出生位（spawn 流）；缺省 None 不改既有行为。
     _sr = LaunchConfiguration('spawn_randomize').perform(context)
     spawn_randomize = None if _sr in (None, '', 'None') else (str(_sr).lower() in ('1', 'true', 'yes'))
+    # W7-b P2 v3（ADR-0083）：`goal_follow_target` 覆盖——true = 任务目标跟随**感知目标**
+    #   （A 与 B 同源 `/agc/targets`）；空/缺省 = 沿用场景值（不改既有场景语义）。
+    _gf = LaunchConfiguration('goal_follow_target').perform(context)
+    goal_follow_target = None if _gf in (None, '', 'None') else (str(_gf).lower() in ('1', 'true', 'yes'))
     if backend not in BACKENDS:
         raise RuntimeError(
             '未知 backend: %s（可用：%s）→ 拒绝运行' % (backend, list(BACKENDS)))
@@ -91,7 +95,7 @@ def _compose(context, *args, **kwargs):
     # ---------------- backend:=lightweight ----------------
     if backend == 'lightweight':
         merged = compose_params(info['base'], info['sc'], backend, seed,
-                                geometry=info['geometry'], spawn_randomize=spawn_randomize)
+                                geometry=info['geometry'], spawn_randomize=spawn_randomize, goal_follow_target=goal_follow_target)
         tmp = write_temp_params(merged, backend, scene, seed)
         asserts = assertions(scene, merged, info)
         manifest_path = write_manifest(build_manifest(backend, info, merged, asserts),
@@ -148,7 +152,7 @@ def _compose(context, *args, **kwargs):
     agent1_port = LaunchConfiguration('agent1_port').perform(context)
 
     merged = compose_params(info['base'], info['sc'], backend, seed, (own_uav_x, own_uav_y),
-                            geometry=info['geometry'], spawn_randomize=spawn_randomize)
+                            geometry=info['geometry'], spawn_randomize=spawn_randomize, goal_follow_target=goal_follow_target)
     tmp = write_temp_params(merged, backend, scene, seed)
 
     # R-026：空中链路节点参数 = air.yaml 基参 + scenarios.yaml 场景覆盖**合并后注入**
@@ -358,6 +362,11 @@ def generate_launch_description():
         'air_tracking_ref', default_value='on',
         description='W7-b P1：空中机**是否使用目标跟踪参考**（on=协同臂：空中机跟随目标；'
                     'off=固定航迹臂：仅飞基础图-8，不订阅 /agc/air/tracking_ref）'))
+    # W7-b P2 v3（ADR-0083）：任务目标是否跟随感知目标；空=沿用场景值（不改既有场景语义）。
+    ld.add_action(DeclareLaunchArgument(
+        'goal_follow_target', default_value='',
+        description='W7-b P2 v3：true=task_manager 目标跟随 /agc/targets（A/B 同源感知目标）；'
+                    '空=沿用场景值（s08 缺省 false=固定任务目标）'))
     ld.add_action(DeclareLaunchArgument('use_sim_time', default_value='true'))
     ld.add_action(DeclareLaunchArgument(
         'gz_args', default_value=['-r -v 3 ', world_file],

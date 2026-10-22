@@ -431,7 +431,7 @@ def _reap_process_group(proc, pgid):
 
 def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers, ready_timeout_s,
                 command_source='rl', shield='true', backend='lightweight', target_source='',
-                observe_yaw_mode='', air_tracking_ref='', log_tag='', obs_horizon_s=0.0,
+                observe_yaw_mode='', air_tracking_ref='', log_tag='', obs_horizon_s=0.0, goal_follow_target='',
                 start_timeout_s=20.0):
     scenario = registry[scene]['params'].get('run_logger', {}).get('scenario', scene)
     world = os.path.join(ROOT, 'install/agc_sim/share/agc_sim/worlds/agc_world.sdf')
@@ -463,6 +463,9 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
     # W7-b（P1 公平性修正）：空中机是否使用目标跟踪参考（''=不覆盖；off=固定航迹臂）
     if air_tracking_ref:
         launch_args.append('air_tracking_ref:=%s' % air_tracking_ref)
+    # W7-b P2 v3（ADR-0083）：任务目标是否跟随**感知目标**——两臂同源，避免 A 拿真值固定目标。
+    if goal_follow_target:
+        launch_args.append('goal_follow_target:=%s' % goal_follow_target)
     # 整链 / 轻量栈都经 world_bringup 追加 `GZ_SIM_SYSTEM_PLUGIN_PATH`（该 launch 以
     # `EnvironmentVariable` 读取，**未导出即抛异常**）；此处按 archive 脚本先例显式导出，
     # 使 run 不依赖调用方 shell 环境（本机 gz 插件路径前提）。
@@ -483,6 +486,7 @@ def run_episode(scene, seed, registry, mode, wall_watchdog_s, out_dir, carriers,
               'command_source': command_source, 'shield': shield,
               'backend': backend, 'target_source': target_source or None,
               'observe_yaw_mode': observe_yaw_mode or None,
+              'goal_follow_target': goal_follow_target or None,
               'expected_terminal': registry[scene].get('expected_terminal'),
               'expected_reason': registry[scene].get('expected_reason'),
               # ADR-0075：运行前清场证据（本次清掉了哪些残留 / 孤儿；空 = 环境本就干净）

@@ -3,8 +3,8 @@
 
 按 [ADR-0070](docs/adr/0070-w7b-research-propositions-and-rl-role-adjudication.md)(f) 跑臂：
   * **基线锚**（R3）：`command_source=baseline`（Navfn + 自研 LQR，准确命名）；
-  * **P2 臂 A（c2）**：`command_source=rl`（RL 直接出 cmd_vel）；
-  * **P2 臂 B（高层+成熟低层）**：`command_source=rl_high`（高层出拦截点；低层 Navfn+LQR）；
+  * **P2 臂 A（c2）**：`command_source=rl`（直接出 cmd_vel；full 链固定协同）；
+  * **P2 臂 B（规则高层 + 成熟低层）**：`command_source=rl_high`（高层出拦截点；低层 Navfn+LQR；full 链固定协同）；
   * **消融·安全干预**（F-06）：同场景 with-shield / without-shield（等预算）；
   * **P1 协同 / 非协同**（R1，`--backend full`）：观测自变量 α = `observe_yaw_mode` ∈ {`target`, `velocity`}。
 
@@ -12,11 +12,14 @@
 `experiments/w7-rl-b/<run_id>/{metrics/arms.json,metrics/arms.md,log/*}`。
 
 **CRN 配对**（[ADR-0070](docs/adr/0070-w7b-research-propositions-and-rl-role-adjudication.md)(e)）：`--seeds` 同 seed 逐臂跑，
-按 (arm, seed) 记录；对 P1 两臂给**逐 seed 配对差**（协同 − 非协同）块，供步 3 按预注册判定。
+按 (arm, seed) 记录；P1 两臂给**逐 seed 配对差**（协同 − 非协同）块，P2 两臂给（臂 B − 臂 A）块，
+供 `w7b_p1_adjudicate.py` / `w7b_p2_adjudicate.py` 按预注册判定。
 
-用法：
+用法（先 source 环境，否则 `agc_msgs` 不在 Python 路径）：
+  source /opt/ros/jazzy/setup.bash && source install/setup.bash
   python3 scripts/w7b_arms_runner.py --mode headless --campaign w7-rl-b
   python3 scripts/w7b_arms_runner.py --arms p1_coop,p1_noncoop --seeds 0,1 --timeout 200 --ready-timeout-s 300
+  python3 scripts/w7b_arms_runner.py --arms p2_c2_low_level,p2_rl_high --seeds 0,1 --timeout 200 --ready-timeout-s 300
 """
 
 import argparse
@@ -37,17 +40,24 @@ TRACK_SCENE = 's02_linear_none_nominal_track'
 SAFETY_SCENE = 's04_static_static_obs_track'
 # P1 需「有效火控机会 + 净空」→ 取捕获场景（全链，含空中观测通道）
 P1_SCENE = 's08_static_none_nominal_capture'
+# P2 固定「协同」→ 同 P1 全链捕获场景（轻量栈无空中域，不能承载 P2 确证）。
+P2_SCENE = P1_SCENE
 
 # 通用字段缺省（保持既有轻量臂不变）：backend=lightweight / target_source='' / observe_yaw_mode=''
 ARMS = [
     {'arm': 'baseline_anchor', 'group': 'R3', 'scene': TRACK_SCENE,
      'command_source': 'baseline', 'shield': 'true',
      'note': '基线锚：Navfn + 自研 LQR（准确命名）'},
-    {'arm': 'p2_c2_low_level', 'group': 'P2', 'scene': TRACK_SCENE,
-     'command_source': 'rl', 'shield': 'true', 'note': 'P2 臂 A：RL 直接出 cmd_vel（c2）'},
-    {'arm': 'p2_rl_high', 'group': 'P2', 'scene': TRACK_SCENE,
-     'command_source': 'rl_high', 'shield': 'true',
-     'note': 'P2 臂 B：高层拦截点（规则）+ 成熟低层 Navfn+LQR'},
+    {'arm': 'p2_c2_low_level', 'group': 'P2', 'scene': P2_SCENE,
+     'command_source': 'rl', 'shield': 'true', 'backend': 'full',
+     'target_source': 'air_fusion', 'observe_yaw_mode': 'target', 'air_tracking_ref': 'on',
+     'goal_follow_target': 'true',
+     'note': 'P2 臂 A：c2 直接出 cmd_vel；固定协同（full 链，ADR-0082/预注册 v3）'},
+    {'arm': 'p2_rl_high', 'group': 'P2', 'scene': P2_SCENE,
+     'command_source': 'rl_high', 'shield': 'true', 'backend': 'full',
+     'target_source': 'air_fusion', 'observe_yaw_mode': 'target', 'air_tracking_ref': 'on',
+     'goal_follow_target': 'true',
+     'note': 'P2 臂 B：规则高层拦截点 + 成熟低层 Navfn+LQR；固定协同（full 链，ADR-0082/预注册 v3）'},
     {'arm': 'ablation_with_shield', 'group': 'ABL', 'scene': SAFETY_SCENE,
      'command_source': 'rl', 'shield': 'true', 'note': '消融·安全干预：with-shield'},
     {'arm': 'ablation_without_shield', 'group': 'ABL', 'scene': SAFETY_SCENE,
@@ -98,6 +108,50 @@ def paired_deltas(results):
         'mean_d_visibility_rate': mean('d_visibility_rate'),
         'mean_d_min_clearance_m': mean('d_min_clearance_m'),
         'adjudication': 'not_executed（步 3：按 src/agc_rl/config/w7b_prereg.yaml 判定）',
+    }
+
+
+def paired_deltas_p2(results):
+    """CRN 配对（P2）：按 seed 对齐两臂，给**逐 seed 配对差**（臂 B − 臂 A）+ 汇总。
+    判定（显著性 / 置信区间 / 阈值）**不在**此处——由 `scripts/w7b_p2_adjudicate.py`
+    按预注册 `statistics.p2` 执行（ADR-0082 / 预注册 v2）。"""
+    by = {(r['arm'], r['seed']): r for r in results}
+    seeds = sorted({r['seed'] for r in results if r['group'] == 'P2'})
+    rows = []
+    for s in seeds:
+        a, b = by.get(('p2_c2_low_level', s)), by.get(('p2_rl_high', s))
+        if not a or not b:
+            continue
+
+        def d(k):
+            x, y = a.get(k), b.get(k)
+            return None if (x is None or y is None) else round(y - x, 6)
+
+        rows.append({
+            'seed': s,
+            'arm_a_terminal': a['terminal_state'], 'arm_b_terminal': b['terminal_state'],
+            'd_fire_control_opportunity_rate': d('fire_control_opportunity_rate'),
+            'd_fire_control_opportunity_rate_active': d('fire_control_opportunity_rate_active'),
+            'd_visibility_rate': d('visibility_rate'),
+            'd_min_clearance_m': d('min_clearance_m'),
+            'd_wall_elapsed_s': d('wall_elapsed_s'),
+            'd_rtf': d('rtf'),
+        })
+
+    def mean(key):
+        vals = [r[key] for r in rows if r[key] is not None]
+        return round(sum(vals) / len(vals), 6) if vals else None
+
+    return rows, {
+        'n_paired': len(rows), 'seeds': seeds,
+        'd_definition': '臂 B(p2_rl_high) − 臂 A(p2_c2_low_level)，同 seed 配对（CRN）',
+        'mean_d_fire_control_opportunity_rate': mean('d_fire_control_opportunity_rate'),
+        'mean_d_fire_control_opportunity_rate_active': mean('d_fire_control_opportunity_rate_active'),
+        'mean_d_visibility_rate': mean('d_visibility_rate'),
+        'mean_d_min_clearance_m': mean('d_min_clearance_m'),
+        'mean_d_wall_elapsed_s': mean('d_wall_elapsed_s'),
+        'mean_d_rtf': mean('d_rtf'),
+        'adjudication': 'not_executed（由 scripts/w7b_p2_adjudicate.py 按 statistics.p2 判定）',
     }
 
 
@@ -252,6 +306,7 @@ def main():
                             command_source=a['command_source'], shield=a['shield'],
                             backend=backend, target_source=ts, observe_yaw_mode=oym,
                             air_tracking_ref=atr, log_tag=a['arm'],
+                            goal_follow_target=a.get('goal_follow_target', ''),
                             obs_horizon_s=args.obs_horizon_s,
                             start_timeout_s=args.start_timeout_s,
                             infra_retries=args.infra_retries)
@@ -260,11 +315,17 @@ def main():
                 with open(r['summary_path']) as f:
                     sm = json.load(f)
             vis = sm.get('visibility_metrics') or {}
+            ew = sm.get('episode_window_metrics') or {}
             attr = sm.get('command_attribution') or {}
+            # W7-b P2 v3（ADR-0083）：active-window FCO——分母 = GROUND_APPROACH→终态 的有效拍，
+            # 不含终态后停泊（规避 window_fixed_v1 的终态后污染）。
+            fco_active = (ew['ticks_fire_control_opportunity'] / ew['vis_ticks_total']
+                          if ew.get('vis_ticks_total') else None)
             row = {
                 'arm': a['arm'], 'group': a['group'], 'note': a['note'],
                 'seed': seed, 'backend': backend, 'target_source': ts or None,
                 'observe_yaw_mode': oym or None, 'air_tracking_ref': atr or 'on',
+                'goal_follow_target': a.get('goal_follow_target', '') or None,
                 'obs_horizon_s': args.obs_horizon_s,
                 'scene': a['scene'], 'command_source': a['command_source'], 'shield': a['shield'],
                 'terminal_state': r.get('terminal_state'), 'reason_code': r.get('reason_code'),
@@ -278,6 +339,9 @@ def main():
                 'intervened_ticks': attr.get('intervened_ticks'),
                 'visibility_rate': vis.get('visibility_rate'),
                 'fire_control_opportunity_rate': vis.get('fire_control_opportunity_rate'),
+                # P2 v3 primary（ADR-0083）：active 窗口（不含终态后停泊）
+                'fire_control_opportunity_rate_active': fco_active,
+                'active_window_ticks': ew.get('ticks_total'),
                 'longest_outage_s': vis.get('longest_outage_s'),
                 'min_clearance_m': attr.get('clearance_min_m'),
                 # ADR-0075：infra 重试协议证据——本 (arm, seed) 用了几次重试、逐次终态/原因/run_id
@@ -295,6 +359,7 @@ def main():
     rclpy.shutdown()
 
     p1_rows, p1_summary = paired_deltas(results)
+    p2_rows, p2_summary = paired_deltas_p2(results)
     backends = sorted({r['backend'] for r in results})
     p1_carried = any(r['group'] == 'R1' for r in results)
     report = {
@@ -314,15 +379,18 @@ def main():
         },
         'carried_arms': sorted({r['arm'] for r in results}),
         'p1_pairing': {'rows': p1_rows, **p1_summary},
+        'p2_pairing': {'rows': p2_rows, **p2_summary},
         'pending_arms': ([] if p1_carried else [
             {'arm': 'p1_coop_vs_noncoop', 'group': 'R1',
              'reason': '需**整链双 PX4**（`--backend full`）→ 本次未跑该臂'},
             {'arm': 'ablation_coop_observation / target_prediction', 'group': 'ABL',
              'reason': '依赖空中协同观测通道（同上）'}]),
         'proposition': 'R1–R3：各臂**可运行 + 同权限同约束同安全层同终态**；P1（R1）以 `--backend full` 承载，'
-                       'CRN 配对结果见 `p1_pairing`（判定属步 3，按预注册）。',
+                       'CRN 配对结果见 `p1_pairing`（判定属步 3，按预注册）。P2（R2）以 full 链 + 固定协同承载，'
+                       'CRN 配对结果见 `p2_pairing`（判定由 scripts/w7b_p2_adjudicate.py 按预注册 statistics.p2 执行）。',
         'diversity_note': '各臂仅自变量不同（命令源 / shield / observe_yaw_mode），余同'
-                          '（同场景 / 同 seed / 同安全层 / 同终态语义）。',
+                          '（同场景 / 同 seed / 同安全层 / 同终态语义；'
+                          'P2 v3 两臂 goal_follow_target 同置 → 同源感知目标，见 ADR-0083）。',
     }
     with open(os.path.join(out_dir, 'metrics', 'arms.json'), 'w') as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
@@ -331,13 +399,14 @@ def main():
           '- backend: `%s` · mode: `%s` · seeds: %s · runs: %d' % (
               report['backend'], args.mode, ','.join(str(s) for s in seeds), len(results)),
           '', '| arm | group | scene | seed | backend | source | shield | oym | terminal | expected '
-          '| pass | vis_rate | fco_rate | min_clearance | retries |',
-          '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
+          '| pass | vis_rate | fco_rate | fco_active | min_clearance | retries |',
+          '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
     for r in results:
-        md.append('| %s | %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |' % (
+        md.append('| %s | %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |' % (
             r['arm'], r['group'], r['scene'], r['seed'], r['backend'], r['command_source'],
             r['shield'], r['observe_yaw_mode'] or '-', r['terminal_state'], r['expected_terminal'],
-            r['pass'], r['visibility_rate'], r['fire_control_opportunity_rate'], r['min_clearance_m'],
+            r['pass'], r['visibility_rate'], r['fire_control_opportunity_rate'],
+            r.get('fire_control_opportunity_rate_active'), r['min_clearance_m'],
             r.get('infra_retries_used') or 0))
     md += ['', '- infra 重试协议（ADR-0075）：上限 %d · 触发重试的 (arm, seed) 数 %d；'
            '逐次尝试产物全留（日志 `ep_<arm>_<scene>_<seed>.log[.rN]`），上报结果 = 最后一次尝试；'
@@ -360,6 +429,23 @@ def main():
             p1_summary['mean_d_visibility_rate'],
             p1_summary['mean_d_min_clearance_m'], p1_summary['n_paired']))
         md.append('- 判定：%s' % p1_summary['adjudication'])
+    if p2_rows:
+        md += ['', '## P2 CRN 配对（臂 B − 臂 A，同 seed）',
+               '| seed | A terminal | B terminal | Δfco_rate | Δfco_active | Δvis_rate | Δmin_clearance | Δwall_elapsed_s | Δrtf |',
+               '|---|---|---|---|---|---|---|---|---|']
+        for r in p2_rows:
+            md.append('| %d | %s | %s | %s | %s | %s | %s | %s | %s |' % (
+                r['seed'], r['arm_a_terminal'], r['arm_b_terminal'],
+                r['d_fire_control_opportunity_rate'], r['d_fire_control_opportunity_rate_active'],
+                r['d_visibility_rate'], r['d_min_clearance_m'], r['d_wall_elapsed_s'], r['d_rtf']))
+        md.append('- 均值：Δfco_rate=%s · Δfco_active=%s · Δvis_rate=%s · Δmin_clearance=%s · Δwall_elapsed_s=%s · Δrtf=%s（n_paired=%d）' % (
+            p2_summary['mean_d_fire_control_opportunity_rate'],
+            p2_summary['mean_d_fire_control_opportunity_rate_active'],
+            p2_summary['mean_d_visibility_rate'],
+            p2_summary['mean_d_min_clearance_m'],
+            p2_summary['mean_d_wall_elapsed_s'],
+            p2_summary['mean_d_rtf'], p2_summary['n_paired']))
+        md.append('- 判定：%s' % p2_summary['adjudication'])
     md += ['', '## 未承载臂', '']
     for p in report['pending_arms']:
         md.append('- `%s`（%s）：%s' % (p['arm'], p['group'], p['reason']))
@@ -372,8 +458,9 @@ def main():
     print('\n-> %s（感知健康度 available=%d/%d）' % (
         os.path.join(out_dir, 'metrics', 'perception_health.json'), n_avail, len(ph['episodes'])))
     print('\n-> %s' % os.path.join(out_dir, 'metrics', 'arms.json'))
-    # 退出码：既有**可运行性**臂（R3/P2/ABL，不含规则高层 p2_rl_high）须全 pass；P1（R1）由预注册判定，不在此门。
-    gate = [r for r in results if r['group'] != 'R1' and r['arm'] != 'p2_rl_high']
+    # 退出码：**可运行性**臂（R3/ABL）须全 pass；P1（R1）与 P2（R2）由预注册判定，
+    # mission failure（含 TIMEOUT）是合法结果，不得作为 runner 失败门。
+    gate = [r for r in results if r['group'] not in ('R1', 'P2')]
     return 0 if all(r['pass'] for r in gate) else 1
 
 

@@ -28,6 +28,18 @@ _Avoid_: 执行入口（与"Runbook"混淆）
 地面域中位于控制输出与唯一执行口之间的兜底屏障，按配置区域对速度强制缩放或急停；默认由 Nav2 `collision_monitor` 实现，空中域由自研避障/滤波器承担。
 _Avoid_: 保护层、shield（指标口径另见契约真源）
 
+**职责分层（Role Stratification）**:
+P2 的架构自变量：高层只出**决策目标**（拦截点 / 火控窗口 / 局部偏移），由成熟低层控制器执行；与"训练 RL"不同——P2 v1 的对照臂以**规则高层**承载（[ADR-0082](./docs/adr/0082-w7b-p2-arm-b-rule-high-level-first.md)）。
+_Avoid_: 高层 RL（未经训练时）、端到端（含义相反）
+
+**有效火控机会（Fire-Control Opportunity, FCO）**:
+目标**同时**满足「可见（感知新鲜）+ 在网发射可及集内」的拍；其占比是 P1/P2 的主 DV。P1 v1 用 `window_fixed_v1`（自首个 active 拍起 60 s，**含终态后停泊**）；P2 v3 用 **active-window FCO**（仅 `GROUND_APPROACH → 终态`，[ADR-0083](./docs/adr/0083-w7b-p2-arm-information-equivalence-and-active-window-fco.md)）。
+_Avoid_: 开火率、命中率（不同量）
+
+**oracle 目标臂（Oracle-Goal Arm）**:
+任务目标直接取**目标真值坐标**（而非感知输出）的对照臂；须显式标注，不能与感知驱动臂混读为同一自变量（[ADR-0083](./docs/adr/0083-w7b-p2-arm-information-equivalence-and-active-window-fco.md)）。
+_Avoid_: 真值臂（未标注时）、感知臂（含义相反）
+
 **无人机跟踪（UAV Standoff Tracking）**:
 己方无人机对入侵目标的**常开**跟踪：保持**安全间距**（不紧贴），目的是**不丢失目标**并持续提供观测，同时负责自身飞行安全。与"编队跟随"不同。
 _Avoid_: 跟随、伴飞、编队

@@ -238,7 +238,7 @@ def load_scene(task_share, perc_share, sim_share, scene, seed, token=None):
 
 
 def compose_params(base, sc, backend, seed, own_uav=(0.0, 0.0), geometry=None,
-                   spawn_randomize=None):
+                   spawn_randomize=None, goal_follow_target=None):
     """合并参数（base + 场景覆盖）并按 backend 注入运行模式。
 
     lightweight：`task_manager.air_present=False`（无空中域，相位复位门禁 C5 不适用，R-001）。
@@ -266,6 +266,9 @@ def compose_params(base, sc, backend, seed, own_uav=(0.0, 0.0), geometry=None,
     # W7-a（R3）：训练视图按 seed 随机化出生位（显式覆盖；缺省 None → 沿用 base / 场景值）。
     if spawn_randomize is not None:
         merged['scenario_reset']['spawn_randomize'] = bool(spawn_randomize)
+    # W7-b P2 v3（ADR-0083）：任务目标是否跟随感知目标——显式覆盖场景值（None=不改）。
+    if goal_follow_target is not None:
+        merged.setdefault('task_manager', {})['goal_follow_target'] = bool(goal_follow_target)
     # S-06：静态障碍清单 + 作业区边界由**真源**派生注入（物理世界为 static 时注入 pole_*）。
     if geometry is not None:
         merged['scenario_reset']['obstacle_names'] = geometry_ids(geometry)
