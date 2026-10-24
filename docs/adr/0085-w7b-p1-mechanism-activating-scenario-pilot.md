@@ -141,7 +141,31 @@ pilot = `p1_coop` / `p1_noncoop` 两臂 × seeds {0,1,2} × 候选 A、B（共 1
 
 **新登记的候选缺陷（不静默）**：协同 seed5 在该 run 中 **2 次开火**（t=32.53 首发 `SHOT_MISS`，miss 0.543 m ≈ 半径 0.5；t=36.03 第二发 `SHOT_FIRED`）后，**第二发无 `SHOT_HIT`/`SHOT_MISS` 结果行**，此后火控窗口未再开启，最终 `MISSION_FAILED(TIMEOUT)`（日志：`..._p1v5-n20/log/ep_p1_coop_s15_static_none_fov_capture_5.log`）。**待查**（发射-结局配对缺失 / 冷却或窗口状态机卡住），复核前不改动任何口径。
 
-**既有产物缺口（如实标注）**：①"**首次机会拍**时刻"（tick 级）与②"**无条件包络占用率**"（不与可见取交）均**未记录**（本表给"可见拍中包络占比"与"首次**开火**时刻"作代理）；如需，须给 [`run_logger.cpp`](../../src/agc_task/src/run_logger.cpp) 增诊断计数（**仅新增字段**，不改既有定义；后续 run 生效）。
+**既有产物缺口（如实标注）**：①"**首次机会拍**时刻"（tick 级）与②"**无条件包络占用率**"（不与可见取交）均**未记录**（本表给"可见拍中包络占比"与"首次**开火**时刻"作代理）；如需，须给 [`run_logger.cpp`](../../src/agc_task/src/run_logger.cpp) 增诊断计数（**仅新增字段**，不改既有定义；后续 run 生效）。**2026-10-24 补充**：上述字段（`first_fire_control_opportunity_s` / `envelope_in_ticks` / `envelope_in_rate` / `first_envelope_in_s`）已在 `episode_window_metrics` 与 `episode_windows` **只增**落地，**仅后续 run 生效**；既有 run 不回填。
+
+#### (i-1) 2026-10-24 复核：协同 seed5「第二发无结果行」= **状态机卡住（实现缺陷）**，非事件丢失
+
+**证据（既有日志，不改任何指标）**：`ep_p1_coop_s15_static_none_fov_capture_5.log`
+
+- `SHOT_FIRED shot=2-1 t=32.532`（h=1.686、dist=1.846）→ 1.348 s 后 `SHOT_MISS shot=2-1`（miss 0.543 m）；
+- `SHOT_FIRED shot=2-2 t=36.032`（h=1.973、dist=0.256）之后**无** `SHOT_HIT` / `SHOT_MISS`，至 episode 结束（sim≈150 s）共约 **114 s** 无结果；
+- 与此同时 `air_perception` 的 `gate_ok` 在 t≈41 s 后持续 >100/5 s、`target_present=1.00`（目标持续可见），
+  `run_logger` 的固定窗可见率 0.972、最长失联 0.692 s，`intervention/collision` 无异常；
+- 同批其它回合出现**同类**长飞行：point_only seed4 `2-4 flight=13.852 s`、seed10 `1-11 flight=13.196 s`、
+  seed18 `2-10 flight=6.948 s / miss_dist=193.769 m`。
+
+**代码路径（`capture_adjudicator.cpp` 的 `DynamicFireControlAdjudicator::step()`）**：
+「车辆 / 目标位姿缺失」与「交战门（适用高度 / 可达 / 水平射程）」的**提前 return 位于 `if (in_flight_)` 之前**。
+一旦在网飞行期间目标估计越出适用高度 / 射程，或目标/车辆新鲜度（含 `confidence_min`）门短暂失败，
+在飞状态既不推进、也不结算；直到下一次**门重新通过**才可能以 `SHOT_MISS` 结算（故出现 13–76 s 的飞行）。
+seed5 第二发之后该门未再通过 ⇒ 无任何结局行。
+
+**结论**：**状态机卡住（实现缺陷）**——不是「事件丢失」（结局只在 `step()` 内产生，未进入分支即无事件），
+也不是「记录口径」（行从未被生成）。**最小复现**：在 `in_flight_==true` 时令目标估计 `h > applicable_max_alt_m`
+（或 `dist > reach + d/2`、或让 `target_fresh=false`）并保持到 episode 结束 → 必现「有 `SHOT_FIRED` 无结局」；
+若中途重新入门，则出现超长 `flight` 的 `SHOT_MISS`。**修复方向（未实施）**：把「在飞推进 / 落地 / 超时结算」
+移到所有位姿/交战门之前，或对在飞状态单独维护弹道时钟。**本注记不改 v5 指标 / verdict**；修复须独立 ADR + 回归。
+
 
 ## 备选
 

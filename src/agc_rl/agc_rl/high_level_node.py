@@ -53,6 +53,10 @@ class HighLevelNode(Node):
         self._filt_rx = None   # 上一帧观测的单调时刻（滤波 dt）
         self.conf = 0.0
         self.state = 0
+        # W7-b T3：诊断——所选航迹身份 / 航迹数 / 低频日志节流（只读，不改发布逻辑）。
+        self.track_id = ''
+        self.n_tracks = 0
+        self._diag_t = None
         self.create_timer(1.0 / max(self.rate_hz, 1e-3), self._tick)
         self.get_logger().info(
             'agc_rl 高层（规则拦截点）就绪：goal_topic=%s lead_s=%.2f（低层 = Navfn + 自研 LQR）'
@@ -67,6 +71,8 @@ class HighLevelNode(Node):
             return
         # 取置信度最高的航迹（避免 front() 在噪声航迹间跳变）。
         t = max(m.tracks, key=lambda tr: float(tr.confidence))
+        self.track_id = t.target_id
+        self.n_tracks = len(m.tracks)
         mx, my = t.pose.pose.position.x, t.pose.pose.position.y
         mvx, mvy = t.twist.twist.linear.x, t.twist.twist.linear.y
         now = time.monotonic()
@@ -106,6 +112,14 @@ class HighLevelNode(Node):
             lx, ly = lx * k, ly * k
         gx = self.tgt[0] + lx
         gy = self.tgt[1] + ly
+        # W7-b T3：1 Hz 诊断（只读）——所选（最高置信度）航迹 / 滤波后目标 / lead / 发布 goal。
+        now_m = time.monotonic()
+        if self._diag_t is None or (now_m - self._diag_t) >= 1.0:
+            self._diag_t = now_m
+            self.get_logger().info(
+                'HL_DIAG target_id=%s n_tracks=%d est=(%.2f,%.2f) lead=(%.2f,%.2f) '
+                'goal=(%.2f,%.2f) conf=%.2f'
+                % (self.track_id, self.n_tracks, self.tgt[0], self.tgt[1], lx, ly, gx, gy, self.conf))
         msg = PoseStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'world'

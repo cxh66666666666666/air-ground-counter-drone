@@ -17,7 +17,7 @@
   * 指向主效应：tracking=on → ①−④；tracking=off → ③−②
   * 跟踪主效应：pointing=target → ①−③；pointing=velocity → ④−②
   * 交互：(①−④)−(③−②)
-DV = active-window FCO（`fire_control_opportunity_rate_active`，同 v5 primary 口径）；
+DV = 真实过程 FCO（`fire_control_opportunity_rate_active`；失败回合保留真实值、缺测配对剔除；**不等于** v5 失败置零判定口径）；
 辅报 `visibility_rate`（fixed 窗，描述）/ active 可见率 / 可见拍中包络占比。
 
 **预登记风险（ADR-0087(a)4）**：cell ④ 可能因 C10 hold 自锁**退化**——本脚本不掩饰：
@@ -152,13 +152,14 @@ def main():
     out = {'kind': 'estimational（ADR-0087；无门槛判定；不改 verdict）',
            'run_id': args.run_id, 'campaign': args.campaign, 'seeds': seeds,
            'cells': cell_stats, 'contrasts': contrasts,
-           'dv': 'fire_control_opportunity_rate_active（active 窗口；同 v5 primary 口径）',
+           'dv': 'fire_control_opportunity_rate_active（真实过程 FCO；失败回合保留真实值、缺测配对剔除；不等于 v5 失败置零判定口径）',
            'known_risk': 'cell ④ p1_track_only 可能因 C10 hold 自锁退化（ADR-0087(a)4 预先登记）'}
 
     md = ['# P1 机制消融（2×2）· %s' % args.run_id, '',
           '> **估计型**分析（ADR-0087）：只做归因/区间估计，**不设门槛判定**、**不改** verdict。', '',
+          '> DV = **真实过程 FCO**（失败回合保留真实值、缺测配对剔除；**不等于** v5 primary 的失败置零计分口径）。', '',
           '## Cell 画像', '',
-          '| arm | 指向 | 跟踪 | n | 终态分布 | active FCO（真实均值） | 计分均值 | active 可见率 | 可见拍中包络占比 | 干预拍均值 |',
+          '| arm | 指向 | 跟踪 | n | 终态分布 | 真实过程 FCO | 计分均值 | active 可见率 | 可见拍中包络占比 | 干预拍均值 |',
           '|---|---|---|---|---|---|---|---|---|---|']
     for arm, oym, atr in CELLS:
         v = cell_stats[arm]

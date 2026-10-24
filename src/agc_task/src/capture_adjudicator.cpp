@@ -109,6 +109,8 @@ struct CaptureDecision
   double miss_dist{0.0};      // 最近逼近距离
   Vec3 predicted{0.0, 0.0, 0.0};
   Vec3 target_vel{0.0, 0.0, 0.0};   // ADR-0079：发射时的滤波后目标速度（证据）
+  Vec3 est{0.0, 0.0, 0.0};          // W7-b T3：发射时的滤波后目标位置（诊断）
+  double t_est{0.0};                // W7-b T3：predictTarget 迭代后用于瞄准的到达时间（诊断）
   std::string shot_id;
 };
 
@@ -216,7 +218,8 @@ public:
     }
 
     // ②③ 发射：以目标预测方位角瞄准（ADR-0079：滤波后位置 + 有上限的提前量）
-    const Vec3 pred = predictTarget(car, tf);
+    double t_est = 0.0;
+    const Vec3 pred = predictTarget(car, tf, t_est);
     const double pdx = pred.x - car.x, pdy = pred.y - car.y;
     const double pdist = std::hypot(pdx, pdy);
     ux_ = (pdist > 1e-6) ? (pdx / pdist) : 1.0;
@@ -237,6 +240,8 @@ public:
     d.shot_id = shot_id_;
     d.t_fire = t_s;
     d.predicted = pred;
+    d.est = Vec3{tf.x, tf.y, tf.z};
+    d.t_est = t_est;
     const agc_task::Vec3d fv = target_filter_.velocity();
     d.target_vel = Vec3{fv.x, fv.y, fv.z};
     d.miss_dist = miss_dist_;
@@ -271,17 +276,20 @@ private:
 
   // 目标预测：按预测到达时间（水平射程 / 网水平速度）迭代求交会点，再乘滤波后速度。
   //   ADR-0079：不使用逐帧位置差分；静止目标的提前量为 0，移动目标提前量有上限。
-  Vec3 predictTarget(const Pose2 & car, const agc_task::Vec3d & tp) const
+  Vec3 predictTarget(const Pose2 & car, const agc_task::Vec3d & tp, double & t_est_out) const
   {
     const double vh = std::max(p_.v0 * std::cos(p_.angle_rad) * p_.drag, 1e-3);
     double t_est = std::hypot(tp.x - car.x, tp.y - car.y) / vh;
+    double t_used = t_est;
     Vec3 pred{tp.x, tp.y, tp.z};
     for (int i = 0; i < 2; ++i) {
       t_est = std::min(t_est, p_.flight_timeout_s);
+      t_used = t_est;
       const agc_task::Vec3d q = target_filter_.predicted(t_est);
       pred = Vec3{q.x, q.y, q.z};
       t_est = std::hypot(q.x - car.x, q.y - car.y) / vh;
     }
+    t_est_out = t_used;   // 实际用于瞄准的到达时间（诊断；不参与弹道）
     return pred;
   }
 
@@ -400,6 +408,16 @@ public:
         target_conf_ = t.confidence;
         target_id_ = t.target_id;
         target_rx_ = now();
+        // W7-b T3：观测年龄 / 航迹选择一致性诊断（只读，不改选择规则）。
+        target_stamp_s_ = rclcpp::Time(t.header.stamp).seconds();
+        target_stamp_valid_ = true;
+        n_tracks_ = m->tracks.size();
+        size_t max_i = 0;
+        for (size_t i = 1; i < m->tracks.size(); ++i) {
+          if (m->tracks[i].confidence > m->tracks[max_i].confidence) {max_i = i;}
+        }
+        front_is_max_conf_ = (max_i == 0);
+        max_conf_target_id_ = m->tracks[max_i].target_id;
       });
     task_state_sub_ = create_subscription<AgcTaskState>(
       task_state_topic, 10,
@@ -454,9 +472,13 @@ private:
         publishEvidence(evidenceString("SHOT_FIRED", d.shot_id, d));
         RCLCPP_INFO(get_logger(),
           "SHOT_FIRED shot=%s t=%.3f h=%.3f dist=%.3f pred=(%.2f,%.2f,%.2f) "
-          "vel=(%.2f,%.2f,%.2f) model_id=%s epoch=%d",
+          "vel=(%.2f,%.2f,%.2f) est=(%.2f,%.2f,%.2f) t_est=%.3f target_id=%s conf=%.3f age=%.3f "
+          "ntracks=%zu front_is_maxconf=%d maxconf_target_id=%s model_id=%s epoch=%d",
           d.shot_id.c_str(), d.t_fire, d.h, d.dist, d.predicted.x, d.predicted.y, d.predicted.z,
           d.target_vel.x, d.target_vel.y, d.target_vel.z,
+          d.est.x, d.est.y, d.est.z, d.t_est,
+          target_id_.c_str(), static_cast<double>(target_conf_), targetAgeS(t),
+          n_tracks_, front_is_max_conf_ ? 1 : 0, max_conf_target_id_.c_str(),
           model_id_.c_str(), current_epoch_);
         break;
       case CaptureStatus::kHit:
@@ -559,6 +581,12 @@ private:
     }
   }
 
+  // W7-b T3：目标观测年龄 now − header.stamp（s；不可得时 -1）。
+  double targetAgeS(const rclcpp::Time & t) const
+  {
+    return target_stamp_valid_ ? (t.seconds() - target_stamp_s_) : -1.0;
+  }
+
   static std::string fmt(double v)
   {
     char buf[32];
@@ -581,6 +609,12 @@ private:
   bool have_epoch_{false};
   float target_conf_{0.0f};
   std::string target_id_{};
+  // W7-b T3：航迹选择一致性 / 观测年龄（只读诊断，不参与发射判定）。
+  double target_stamp_s_{0.0};
+  bool target_stamp_valid_{false};
+  size_t n_tracks_{0};
+  bool front_is_max_conf_{true};
+  std::string max_conf_target_id_{};
   Pose2 car_, target_;
   rclcpp::Time car_rx_{0, 0, RCL_ROS_TIME}, target_rx_{0, 0, RCL_ROS_TIME};
   std::unique_ptr<CaptureAdjudicator> adjudicator_;

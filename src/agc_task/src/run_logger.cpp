@@ -281,6 +281,9 @@ public:
     long agg_ticks_intervened = 0;   // W7-b（T1/E1）
     long agg_vis_total = 0, agg_vis_visible = 0, agg_vis_opportunity = 0;
     double agg_vis_gap_longest = 0.0, agg_vis_recovery_last = 0.0;
+    // W7-b（T4）：窗口级新诊断的聚合（只增不改；相对时刻取各窗口最早值，窗口起点仍为各自 enter_s）。
+    long agg_envelope_in = 0;
+    double agg_first_fco_s = -1.0, agg_first_envelope_in_s = -1.0;
     for (const auto & w : windows_) {
       agg_ticks_total += w.ticks_total;
       agg_ticks_valid += w.ticks_valid;
@@ -293,6 +296,17 @@ public:
       agg_vis_total += w.vis_ticks_total;
       agg_vis_visible += w.vis_ticks_visible;
       agg_vis_opportunity += w.vis_ticks_opportunity;
+      agg_envelope_in += w.envelope_in_ticks;
+      if (w.first_fire_control_opportunity_s >= 0.0 &&
+        (agg_first_fco_s < 0.0 || w.first_fire_control_opportunity_s < agg_first_fco_s))
+      {
+        agg_first_fco_s = w.first_fire_control_opportunity_s;
+      }
+      if (w.first_envelope_in_s >= 0.0 &&
+        (agg_first_envelope_in_s < 0.0 || w.first_envelope_in_s < agg_first_envelope_in_s))
+      {
+        agg_first_envelope_in_s = w.first_envelope_in_s;
+      }
       if (w.vis_gap_longest_s > agg_vis_gap_longest) {agg_vis_gap_longest = w.vis_gap_longest_s;}
       if (w.vis_recovery_last_s > agg_vis_recovery_last) {agg_vis_recovery_last = w.vis_recovery_last_s;}
     }
@@ -416,6 +430,17 @@ public:
         << ", \"vis_ticks_total\": " << agg_vis_total
         << ", \"vis_ticks_visible\": " << agg_vis_visible
         << ", \"ticks_fire_control_opportunity\": " << agg_vis_opportunity
+        // === W7-b（T4，ADR-0085(i) 后续诊断）：窗口级机会 / 包络（**只增不改**）===
+        // first_* 为**相对窗口 enter_s** 的时刻（s）；-1 = 窗口内未发生（输出 null）。
+        // envelope_in_* 为**无条件**包络占用（env_ok ∧ envelope_in_，**不**与 visible 取交）；
+        // 分母沿用同窗口逐拍计数 agg_vis_total（与 visibility_rate 分母同源）。
+        << ", \"first_fire_control_opportunity_s\": "
+        << (agg_first_fco_s >= 0.0 ? std::to_string(agg_first_fco_s) : std::string("null"))
+        << ", \"envelope_in_ticks\": " << agg_envelope_in
+        << ", \"envelope_in_rate\": " << (agg_vis_total > 0 ?
+            std::to_string(static_cast<double>(agg_envelope_in) / agg_vis_total) : std::string("null"))
+        << ", \"first_envelope_in_s\": "
+        << (agg_first_envelope_in_s >= 0.0 ? std::to_string(agg_first_envelope_in_s) : std::string("null"))
         << ", \"visibility_rate\": "
         << (agg_vis_total > 0 ? std::to_string(static_cast<double>(agg_vis_visible) / agg_vis_total) : std::string("null"))
         << ", \"intervention_ticks_ratio\": " << window_intervention_ratio
@@ -442,6 +467,17 @@ public:
           << ", \"vis_ticks_visible\": " << w.vis_ticks_visible
           << ", \"ticks_fire_control_opportunity\": " << w.vis_ticks_opportunity
           << ", \"vis_gap_longest_s\": " << w.vis_gap_longest_s
+          // W7-b（T4）：窗口级机会 / 无条件包络（相对本窗口 enter_s；-1 → null）。
+          << ", \"first_fire_control_opportunity_s\": "
+          << (w.first_fire_control_opportunity_s >= 0.0 ?
+              std::to_string(w.first_fire_control_opportunity_s) : std::string("null"))
+          << ", \"envelope_in_ticks\": " << w.envelope_in_ticks
+          << ", \"envelope_in_rate\": " << (w.vis_ticks_total > 0 ?
+              std::to_string(static_cast<double>(w.envelope_in_ticks) / w.vis_ticks_total) :
+              std::string("null"))
+          << ", \"first_envelope_in_s\": "
+          << (w.first_envelope_in_s >= 0.0 ?
+              std::to_string(w.first_envelope_in_s) : std::string("null"))
           << ", \"shield_infeasible_rate\": "
           << (w.triggered_ticks > 0 ?
               std::to_string(static_cast<double>(w.infeasible_ticks) / w.triggered_ticks) :
@@ -539,6 +575,11 @@ private:
     long vis_ticks_total{0}, vis_ticks_visible{0}, vis_ticks_opportunity{0};
     double vis_gap_longest_s{0.0}, vis_recovery_last_s{0.0};
     double vis_gap_start_s{-1.0};
+    // W7-b（T4，ADR-0085(i) 后续诊断；**只增不改**）：窗口级机会 / 包络诊断。
+    // 相对时刻一律以**本窗口 enter_s**（既有字段）为起点；-1 = 窗口内未发生。
+    double first_fire_control_opportunity_s{-1.0};  // 首次 FCO（visible ∧ envelope_in）相对时刻
+    long envelope_in_ticks{0};                      // **无条件**包络占用拍数（env_ok ∧ envelope_in_，不与 visible 取交）
+    double first_envelope_in_s{-1.0};               // 首次包络进入相对时刻
   };
 
   // R-028：active / 终态判据（与 task_manager 对齐；active = AIR_SEARCH|TARGET_ACQUIRED|GROUND_APPROACH）。
@@ -614,7 +655,20 @@ private:
     EpisodeWindow & w = windows_[current_window_];
     ++w.vis_ticks_total;
     if (visible) {++w.vis_ticks_visible;}
-    if (visible && env_ok && envelope_in_) {++w.vis_ticks_opportunity;}
+    // W7-b（T4）：**无条件**包络占用（env_ok ∧ envelope_in_，不与 visible 取交）——只增不改。
+    if (env_ok && envelope_in_) {
+      ++w.envelope_in_ticks;
+      if (w.first_envelope_in_s < 0.0) {
+        w.first_envelope_in_s = t_now - w.enter_s;
+      }
+    }
+    if (visible && env_ok && envelope_in_) {
+      ++w.vis_ticks_opportunity;
+      // W7-b（T4）：首次 FCO 相对时刻（= 可见 ∧ 包络内；**首次开火时刻不得替代**）。
+      if (w.first_fire_control_opportunity_s < 0.0) {
+        w.first_fire_control_opportunity_s = t_now - w.enter_s;
+      }
+    }
     if (!visible) {
       if (w.vis_gap_start_s < 0.0) {w.vis_gap_start_s = t_now;}
     } else if (w.vis_gap_start_s >= 0.0) {

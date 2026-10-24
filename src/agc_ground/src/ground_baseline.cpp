@@ -33,6 +33,8 @@
 
 #include <nav2_core/global_planner.hpp>
 #include <nav2_costmap_2d/costmap_2d_ros.hpp>
+#include <nav2_costmap_2d/costmap_layer.hpp>
+#include <nav2_costmap_2d/layered_costmap.hpp>
 #include <nav2_util/lifecycle_node.hpp>
 #include <nav2_util/node_thread.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -229,33 +231,80 @@ protected:
 
 private:
   // ---------------------------------------------------------------- 控制循环
-  // costmap 内容签名（尺寸 / 原点 / **硬障碍栅格**），用于检测地图变化（R-012）。
+  // costmap 内容签名（尺寸 / 原点 / **致命占据栅格**），用于检测地图变化（R-012）。
   // 复用 Nav2 组件 `Costmap2DROS::getCostmap()` + `Costmap2D::getCharMap()`（本机 Jazzy 头文件已核验）。
-  // 只计入**硬障碍**（cost ≥ INSCRIBED_INFLATED_OBSTACLE=253，即 lethal / inscribed），
+  // 只计入 **LETHAL_OBSTACLE=254**（真实占据格；static/obstacle/voxel 层 marking 的落点），
   // 以屏蔽 obstacle/voxel 层逐帧 raytrace clearing（FREE/UNKNOWN 翻转）与 inflation 传播的噪声：
-  // 实测（r012 GUI）全景内容哈希在行驶中会瞬态抖动，而硬障碍集在行驶中稳定、增障时即偏离。
-  uint64_t mapSignature() const
+  // 实测（r012 GUI）全景内容哈希在行驶中会瞬态抖动，而致命占据集在行驶中稳定、增障时即偏离。
+  //
+  // 2026-10-24（ADR-0089，P2 重规划审计）：此前的判据是 `cost >= 253`，把
+  //   `NO_INFORMATION=255`（未知 / `track_unknown_space` 下的 -1）与
+  //   `INSCRIBED_INFLATED_OBSTACLE=253`（inflation 内切圆环）也计为「硬障碍」——
+  //   未知格翻转与膨胀环变化都会造成**伪地图触发**。改为仅 `== 254` 后：
+  //   ① 真实增删占据格仍触发（回归用例 C4）；② 未知翻转（C5）与 inflation 环不再触发。
+  //
+  // 诊断用：地图签名的分量（只读，不参与签名算法本身）。
+  //   `hash` 与 mapSignature() 逐位一致；`layers` 为各 CostmapLayer 自己的栅格中硬障碍格计数
+  //   （inflation 层不是 CostmapLayer，无法只读其内部栅格 → 标记为不可拆）。
+  struct MapSigInfo
   {
+    uint64_t hash{0};
+    unsigned int sx{0}, sy{0};
+    double ox{0.0}, oy{0.0};
+    size_t hard_cells{0};
+    std::vector<std::pair<std::string, size_t>> layers;  // 层名 -> 硬障碍格数
+    std::vector<std::string> layer_unavailable;          // 无法拆分的层（inflation）
+  };
+
+  MapSigInfo mapSigInfo(bool with_layers = false) const
+  {
+    MapSigInfo info;
     auto * cm = costmap_ros_ ? costmap_ros_->getCostmap() : nullptr;
-    if (cm == nullptr) {return 0;}
+    if (cm == nullptr) {return info;}
     const unsigned char * data = cm->getCharMap();
     const unsigned int sx = cm->getSizeInCellsX();
     const unsigned int sy = cm->getSizeInCellsY();
-    if (data == nullptr || sx == 0 || sy == 0) {return 0;}
+    if (data == nullptr || sx == 0 || sy == 0) {return info;}
+    info.sx = sx;
+    info.sy = sy;
+    info.ox = cm->getOriginX();
+    info.oy = cm->getOriginY();
     uint64_t h = 1469598103934665603ULL;  // FNV-1a 64 位偏移基
     const auto mix = [&h](uint64_t v) {
         for (int i = 0; i < 8; ++i) {h ^= (v >> (8 * i)) & 0xFFULL; h *= 1099511628211ULL;}
       };
     mix(sx); mix(sy);
-    double ox = cm->getOriginX(), oy = cm->getOriginY();
     uint64_t oxb = 0, oyb = 0;
-    std::memcpy(&oxb, &ox, sizeof(oxb)); std::memcpy(&oyb, &oy, sizeof(oyb));
+    std::memcpy(&oxb, &info.ox, sizeof(oxb)); std::memcpy(&oyb, &info.oy, sizeof(oyb));
     mix(oxb); mix(oyb);
     const unsigned int n = sx * sy;
     for (unsigned int i = 0; i < n; ++i) {
-      if (data[i] >= 253) {mix(i);}   // 仅硬障碍栅格参与签名
+      if (data[i] == 254) {mix(i); ++info.hard_cells;}   // 仅 LETHAL_OBSTACLE 参与签名（ADR-0089）
     }
-    return h;
+    info.hash = h;
+    // 分层拆分仅在需要诊断日志时计算（每 tick 的地图比较不付这份开销）。
+    auto * lc = with_layers ? costmap_ros_->getLayeredCostmap() : nullptr;
+    if (lc != nullptr) {
+      for (auto & layer : *lc->getPlugins()) {
+        if (!layer) {continue;}
+        auto * cl = dynamic_cast<nav2_costmap_2d::CostmapLayer *>(layer.get());
+        if (cl == nullptr) {info.layer_unavailable.push_back(layer->getName()); continue;}
+        const unsigned char * ld = cl->getCharMap();
+        const unsigned int ln = cl->getSizeInCellsX() * cl->getSizeInCellsY();
+        size_t cnt = 0;
+        if (ld != nullptr) {
+          // 与主签名同口径：仅 LETHAL_OBSTACLE；各层内部栅格的 NO_INFORMATION(255) 不计。
+          for (unsigned int i = 0; i < ln; ++i) {if (ld[i] == 254) {++cnt;}}
+        }
+        info.layers.emplace_back(layer->getName(), cnt);
+      }
+    }
+    return info;
+  }
+
+  uint64_t mapSignature() const
+  {
+    return mapSigInfo(false).hash;
   }
 
   // 地图自上次规划以来是否变化：costmap 栅格内容签名（尺寸 / 原点 / 硬障碍栅格）与规划时刻不一致。
@@ -263,6 +312,27 @@ private:
   bool mapChangedSincePlan()
   {
     return mapSignature() != last_plan_map_sig_;
+  }
+
+  // 诊断：把触发时的实际量写入日志（只读，不改变返回逻辑 / 阈值 / 限流）。
+  void logMapTrigger(const MapSigInfo & info, double now_s) const
+  {
+    std::string layers;
+    for (const auto & kv : info.layers) {
+      if (!layers.empty()) {layers += ",";}
+      layers += kv.first + ":" + std::to_string(kv.second);
+    }
+    for (const auto & name : info.layer_unavailable) {
+      if (!layers.empty()) {layers += ",";}
+      layers += name + ":n/a(不是CostmapLayer)";
+    }
+    RCLCPP_INFO(
+      get_logger(),
+      "重规划触发：地图变化（costmap 硬障碍签名偏离） map_sig=0x%016lx "
+      "last_plan_map_sig=0x%016lx sx=%u sy=%u origin=(%.3f,%.3f) hard_cells=%zu "
+      "layers=[%s] goal=(%.3f,%.3f) t=%.3f",
+      info.hash, last_plan_map_sig_, info.sx, info.sy, info.ox, info.oy, info.hard_cells,
+      layers.c_str(), goal_x_, goal_y_, now_s);
   }
 
   bool needReplan(double now_s)
@@ -273,16 +343,29 @@ private:
     if (!path_valid_) {return age >= replan_period_s_;}      // 规划失败：按周期重试（期间失效停车）
     if (path_.poses.size() < 2) {return true;}
     // 绑定检查：目标身份 / 地图签名 / 有效时限，任一变化 → 立即重规划（R-012）
-    if (std::hypot(goal_x_ - last_plan_goal_.first, goal_y_ - last_plan_goal_.second) > replan_disp_m_) {
-      RCLCPP_INFO(get_logger(), "重规划触发：目标身份变");
+    // 注（T2 审计）：本分支的判据是**目标位移**（L2 距离 > replan_disp_m_），不是 target_id；
+    //   日志标签沿用历史名称「目标身份变」，诊断行显式给出实际位移。
+    const double goal_delta_m =
+      std::hypot(goal_x_ - last_plan_goal_.first, goal_y_ - last_plan_goal_.second);
+    if (goal_delta_m > replan_disp_m_) {
+      RCLCPP_INFO(
+        get_logger(),
+        "重规划触发：目标身份变 goal_delta_m=%.3f threshold=%.3f "
+        "last_plan_goal=(%.3f,%.3f) goal=(%.3f,%.3f) t=%.3f",
+        goal_delta_m, replan_disp_m_, last_plan_goal_.first, last_plan_goal_.second,
+        goal_x_, goal_y_, now_s);
       return true;
     }
-    if (mapChangedSincePlan()) {
-      RCLCPP_INFO(get_logger(), "重规划触发：地图变化（costmap 硬障碍签名偏离）");
+    const MapSigInfo sig = mapSigInfo(false);
+    if (sig.hash != last_plan_map_sig_) {
+      logMapTrigger(mapSigInfo(true), now_s);
       return true;
     }
     if (age > max_path_age_s_) {
-      RCLCPP_INFO(get_logger(), "重规划触发：路径超有效时限 %.1fs > %.1fs", age, max_path_age_s_);
+      RCLCPP_INFO(
+        get_logger(),
+        "重规划触发：路径超有效时限 %.3fs > %.3fs goal=(%.3f,%.3f) t=%.3f",
+        age, max_path_age_s_, goal_x_, goal_y_, now_s);
       return true;
     }
     return age >= replan_period_s_;                          // 周期性刷新
