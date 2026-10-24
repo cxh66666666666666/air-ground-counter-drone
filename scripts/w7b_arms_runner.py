@@ -71,6 +71,18 @@ ARMS = [
      'backend': 'full', 'target_source': 'air_fusion', 'observe_yaw_mode': 'velocity',
      'air_tracking_ref': 'off',
      'note': 'P1 非协同臂：空中机**固定航迹**（不订阅跟踪参考）+ **机头随速度**（不指向目标）'},
+    # —— ADR-0087：P1 机制消融（指向 × 跟踪参考 2×2）的另外两个 cell ——
+    #   ①p1_coop = target+on ｜ ②p1_noncoop = velocity+off（上）｜ ③p1_point_only = target+off
+    #   ④p1_track_only = velocity+on（已知风险：ADR-0073 实证 C10 hold 自锁可能使该 cell 退化——预登记）。
+    {'arm': 'p1_point_only', 'group': 'R1x', 'scene': P1_SCENE, 'command_source': 'rl', 'shield': 'true',
+     'backend': 'full', 'target_source': 'air_fusion', 'observe_yaw_mode': 'target',
+     'air_tracking_ref': 'off',
+     'note': 'P1 消融③仅指向：机头对准目标（oracle 指向），但飞**固定 figure-8**（不订阅跟踪参考）'},
+    {'arm': 'p1_track_only', 'group': 'R1x', 'scene': P1_SCENE, 'command_source': 'rl', 'shield': 'true',
+     'backend': 'full', 'target_source': 'air_fusion', 'observe_yaw_mode': 'velocity',
+     'air_tracking_ref': 'on',
+     'note': 'P1 消融④仅跟踪：跟随目标航迹（订阅跟踪参考），但机头**随速度**（不指向目标）；'
+             'ADR-0073 已实证该组合可能触发 C10 hold 自锁 → 若退化照实报告'},
 ]
 
 
@@ -263,6 +275,8 @@ def main():
     ap.add_argument('--run-id', default=None)
     ap.add_argument('--seeds', default='0', help='逗号分隔 seed（CRN：同 seed 逐臂配对跑）')
     ap.add_argument('--arms', default=None, help='逗号分隔 arm 名（缺省全部）')
+    # ADR-0085：场景覆盖（pilot / 新固定条件用；缺省 '' = 用 ARMS 内各臂自带场景）。
+    ap.add_argument('--scene', default='', help='覆盖所选臂的场景（缺省沿用 ARMS 定义）')
     # ADR-0074：终态后继续采到**固定观测时长**（自 start 起、仿真钟秒）；须与 run_logger 的
     # `obs_window_s` 同值（w6_base.yaml，缺省 60.0），否则 visibility_metrics 窗口采不满。
     ap.add_argument('--obs-horizon-s', type=float, default=60.0)
@@ -286,6 +300,9 @@ def main():
 
     registry, carriers = _registry(), _carriers()
     arms = ARMS if not args.arms else [a for a in ARMS if a['arm'] in args.arms.split(',')]
+    # ADR-0085：场景覆盖——**复制**后改 scene，不改 ARMS 本体（缺省行为不变）。
+    if args.scene:
+        arms = [dict(a, scene=args.scene) for a in arms]
     seeds = [int(s) for s in args.seeds.split(',') if s.strip()]
 
     rclpy.init()   # run_episode 依赖已初始化的 rclpy（与 episode_runner.main 同约定）

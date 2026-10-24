@@ -16,8 +16,10 @@
   * **超时一律失败**（契约 C4）→ 失败 / infra / 未达终态 的回合，其 **primary DV 按 0**
     计入分母（`keep_all_failures_and_infra`）；成功回合缺值 → 剔除该配对并计数。
   * **secondary**（最小净空）失败回合仍有真实净空，记 0 会误表「碰撞」→ 缺值配对剔除并计数。
-  * 判定 = 双侧**配对 t 检验** `p < alpha` **且** 均值配对差（B−A）≥ `min_detectable_effect`
-    ⇒ P2 成立（职责升级）；否则**证伪 → 保留 c2**。
+  * 判定（**v6 三态**，ADR-0086）= 按 95% CI 与 **MME**（`decision.p2.minimum_meaningful_effect`）的关系：
+    CI 下限 > MME → `supported`；CI 上限 < MME → `falsified`；**CI 覆盖 MME → `inconclusive`**。
+    `mean(Δ) ≥ MDE` 属 v3 legacy 口径（输出 `holds_legacy_criterion` 仅供历史对照）；
+    「样本量可检测效应」属**规划量**（`statistics.p2.planning`），与门槛分列。
   * 另报 95% 配对差 CI + Wilcoxon 符号秩 p（稳健性，**不**参与判定）。
 
 用法：
@@ -68,8 +70,15 @@ def main():
     arm_b = args.arm_b or p2d['arms']['b']
     stat = pre['statistics']['p2']
     alpha = float(stat['alpha'])
-    mde = float(stat['min_detectable_effect'])
+    power = float(stat.get('power', 0.80))
+    # legacy 门槛字段：v6 起只作历史（判定读 `decision.p2.minimum_meaningful_effect`）。
+    mde = float(stat.get('min_detectable_effect',
+                         pre['statistics'].get('min_detectable_effect', 0.10)))
     n_req = int(stat['n_paired_episodes_per_arm'])
+    # ADR-0086：v6 三态判据（CI vs MME）与 v3 legacy 口径（版本守卫，互不冒充）。
+    criterion = p2d.get('criterion', 'p < alpha AND mean(delta) >= MDE')
+    mme = p2d.get('minimum_meaningful_effect')
+    mme = float(mme) if (criterion == 'three_state_ci_vs_mme' and mme is not None) else None
     primary_key = p2d['primary_dv']
     secondary_key = p2d['secondary_dv']
 
@@ -86,9 +95,12 @@ def main():
         'prereg_file_version': pre['version'],
         'prereg_status_before': pre['status'],
         'alpha': alpha, 'min_detectable_effect': mde,
+        'criterion': criterion,
+        'minimum_meaningful_effect': mme,
+        'threshold_legacy_mde': mde,
         'n_paired_episodes_per_arm_prereg': n_req,
-        'power': float(stat['power']),
-        'power_basis': stat.get('power_basis', ''),
+        'power': power,
+        'planning': stat.get('planning', {}),
         'arm_a': arm_a, 'arm_b': arm_b, 'direction': 'b_minus_a',
         'n_seeds_total': len(seeds),
         'claim_scope': p2d.get('claim_scope', ''),
@@ -149,25 +161,54 @@ def main():
             'mean_delta': round(mean_d, 6), 'sd_delta': round(sd, 6),
             'ci95': ci, 'paired_t_p_two_sided': p_two,
             'wilcoxon_p_two_sided': w_p,
-            'threshold_min_detectable_effect': mde,
-            'holds': holds, 'rows': rows,
+            'threshold_legacy_mde': mde,
+            'holds_legacy_criterion': holds, 'rows': rows,
         }
+        # v6（ADR-0086）：三态（CI vs MME）——只对参与判定的 DV（primary）计算。
+        if role == 'primary' and mme is not None:
+            t_vs_mme = (mean_d - mme) / sem
+            p_one = float(stats.t.sf(t_vs_mme, n - 1))     # H0: Δ <= MME vs H1: Δ > MME
+            if ci[0] > mme:
+                state = 'supported'
+            elif ci[1] < mme:
+                state = 'falsified'
+            else:
+                state = 'inconclusive'
+            z_need = stats.norm.ppf(1 - alpha / 2) + stats.norm.ppf(power)
+            n_req_est = (int(round((z_need * sd / (mean_d - mme)) ** 2))
+                         if mean_d > mme else None)
+            out[dv_label].update({
+                'minimum_meaningful_effect': mme,
+                'state': state,
+                'p_one_sided_vs_mme': p_one,
+                'planned_detectable_effect_two_sided': round(z_need * sd / np.sqrt(n), 6),
+                'decision_n_required_est': n_req_est,
+                'decision_n_required_note': (
+                    '若真实效应等于本观测点估计，需该配对数才能在 α / power 下断言 Δ>MME'
+                    if n_req_est else '点估计 ≤ MME：按本估计任何 N 都不支持 Δ>MME（须更大效应或更低 MME）'),
+            })
 
-    # v3 primary 标签由预注册 primary_dv 决定（v3 = fco_rate_active；v2 legacy = fco_rate）。
+    # primary 标签由预注册 primary_dv 决定（v3 = fco_rate_active；v2 legacy = fco_rate）。
     primary_label = DV_META[primary_key][0]
     prim = out.get(primary_label, {})
-    if 'holds' not in prim:
+    if criterion == 'three_state_ci_vs_mme':
+        state = prim.get('state')
+        verdict = {
+            'supported': '成立（CI 下限 > MME：臂 B 的优势达到最小有意义量）',
+            'falsified': '证伪（CI 上限 < MME：可排除达到门槛的效应 → 保留 c2）',
+            'inconclusive': '未通过门槛（CI 覆盖 MME：既未支持也未排除 → 保留 c2）',
+        }.get(state, '未判定（有效配对数不足）')
+    elif 'holds_legacy_criterion' not in prim:
         verdict = '未判定（有效配对数不足）'
-    elif prim['holds']:
-        verdict = '成立（臂 B > 臂 A：职责分层成立）'
+    elif prim['holds_legacy_criterion']:
+        verdict = '成立（臂 B > 臂 A：职责分层成立；v3 legacy 口径）'
     elif (prim.get('paired_t_p_two_sided', 1.0) < alpha and prim.get('mean_delta', 0.0) < 0.0):
-        verdict = '证伪（未达优越性判据；primary 方向为负且显著 → 保留 c2）'
+        verdict = '证伪（未达优越性判据；primary 方向为负且显著 → 保留 c2；legacy 口径）'
     else:
-        verdict = '证伪（未达预注册显著性 / MDE → 保留 c2）'
+        verdict = '证伪（未达预注册显著性 / MDE → 保留 c2；legacy 口径）'
     out['p2_verdict'] = verdict
     out['decision_rule'] = p2d.get('rule', '')
     out['falsification_rule'] = p2d.get('falsification', '')
-    out['criterion'] = p2d.get('criterion', '')
 
     # ADR-0075：infra 率与重试分布须随报告一并报出（机器特性，不得读作臂效应）。
     p2_rows = [r for r in arms['arms'] if r['arm'] in (arm_a, arm_b)]

@@ -133,3 +133,60 @@ scenes:
       task_manager: {goal_follow_target: true, goal_x: 4.5, goal_y: 3.0}
       run_logger: {scenario: "s12_linear_dynamic_nominal_capture"}
       intruder_driver: {motion: linear, speed_mps: 0.3}
+
+  # —— W7-b P1 机制激活候选（ADR-0085）：s08 的"固定目标 + 静态 + 标称"使 α（观测指向 + 跟踪参考）
+  #    的因果链被旁路（ADR-0084(f)）。以下两个场景为该命题的**固定条件候选**，先经 pilot 选一。
+  s13_linear_none_nominal_capture:
+    axes: {target_motion: linear, obstacle: none, perception: nominal, outcome: capture}
+    support_status: supported
+    expected_terminal: INTERCEPT_CONFIRMED
+    expected_reason: CAPTURE_NET
+    params:
+      scenario_reset: {target_x: 4.5, target_y: 3.0}
+      task_manager: {goal_follow_target: true, goal_x: 4.5, goal_y: 3.0,
+                     # ADR-0076 不变量：capture 场景不以跟踪里程碑锁存终态
+                     tracking_milestone_is_terminal: false}
+      run_logger: {scenario: "s13_linear_none_nominal_capture"}
+      intruder_driver: {motion: linear, speed_mps: 0.5}
+      capture_adjudicator: {interception_authorized: true}
+
+  s14_linear_none_fov_capture:
+    axes: {target_motion: linear, obstacle: none, perception: fov, outcome: capture}
+    support_status: supported
+    expected_terminal: INTERCEPT_CONFIRMED
+    expected_reason: CAPTURE_NET
+    params:
+      scenario_reset: {target_x: 4.5, target_y: 3.0}
+      task_manager: {goal_follow_target: true, goal_x: 4.5, goal_y: 3.0,
+                     tracking_milestone_is_terminal: false}
+      run_logger: {scenario: "s14_linear_none_fov_capture"}
+      intruder_driver: {motion: linear, speed_mps: 0.5}
+      capture_adjudicator: {interception_authorized: true}
+
+  # —— 第 2 轮 pilot 候选（ADR-0085(e)）：静态目标 ⇒ 无"追不上 + C10 hold 自锁"混淆，
+  #    难度只落在观测通道（窄视场 / 丢包），用于分离"指向 / 跟踪"本身的机制效应。
+  s15_static_none_fov_capture:
+    axes: {target_motion: static, obstacle: none, perception: fov, outcome: capture}
+    support_status: supported
+    expected_terminal: INTERCEPT_CONFIRMED
+    expected_reason: CAPTURE_NET
+    params:
+      scenario_reset: {target_x: 4.5, target_y: 3.0}
+      task_manager: {goal_follow_target: false, goal_x: 4.5, goal_y: 3.0,
+                     tracking_milestone_is_terminal: false}
+      run_logger: {scenario: "s15_static_none_fov_capture"}
+      intruder_driver: {motion: static}
+      capture_adjudicator: {interception_authorized: true}
+
+  s16_static_none_dropout_capture:
+    axes: {target_motion: static, obstacle: none, perception: dropout, outcome: capture}
+    support_status: supported
+    expected_terminal: INTERCEPT_CONFIRMED
+    expected_reason: CAPTURE_NET
+    params:
+      scenario_reset: {target_x: 4.5, target_y: 3.0}
+      task_manager: {goal_follow_target: false, goal_x: 4.5, goal_y: 3.0,
+                     tracking_milestone_is_terminal: false}
+      run_logger: {scenario: "s16_static_none_dropout_capture"}
+      intruder_driver: {motion: static}
+      capture_adjudicator: {interception_authorized: true}

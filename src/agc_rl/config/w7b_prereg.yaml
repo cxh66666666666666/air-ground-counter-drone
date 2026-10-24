@@ -6,11 +6,12 @@
 # 变更须升 `version`；旧版在 `history` 保留，P1 的已执行口径不随 v2 回溯改写。
 w7b_prereg:
   # 预注册口径版本（变更须新版本号，旧版保留）。
-  version: 3
-  # 分命题注册版本（P1 已按 v1 执行；v2 只补 P2 细则；v3 修 P2 臂信息等价 + FCO 口径，不回写 P1）。
+  version: 6
+  # 分命题注册版本（P1 v1 已执行；v2 只补 P2 细则；v3 修 P2 臂信息等价 + FCO 口径；
+  # v4 修 P1 的 DV 窗口口径；v5 换机制激活场景 s15；v6 分离 MME 与规划量、判定改三态，均不回写历史结论）。
   proposition_versions:
-    p1: 1
-    p2: 3
+    p1: 6
+    p2: 6
   history:
     - version: 1
       date: 2026-10-19
@@ -21,12 +22,109 @@ w7b_prereg:
     - version: 3
       date: 2026-10-22
       scope: "P2 修正（ADR-0083）：①臂信息等价——A 不再用真值固定目标，两臂任务目标同源 /agc/targets（goal_follow_target=true）；②primary DV 改为 active-window FCO（不含终态后停泊）；v2 批次 20261022-w7-rl-b-112833-1155 标记为 confounded，不作为 P2 判定证据；P1 口径不变"
-  # —— 判定规则 ——
-  # P1 协同收益（主线）：协同臂在预注册样本 + 置信区间下显著优于**非协同**（有效火控机会 / 最小净空）。
-  # P2 RL 职责分层（副线）：臂 B（规则高层 + 成熟低层）在**等预算**下显著优于臂 A（c2）。
-  # 失败判据：不显著 → 对应命题**证伪**（P2 证伪 ⇒ **保留 c2**，不推翻 ADR-0004）。
+    - version: 4
+      date: 2026-10-23
+      scope: "P1 窗口口径复核（ADR-0084）：primary DV 由 window_fixed_v1 的 fire_control_opportunity_rate 改为 active-window 的 fire_control_opportunity_rate_active（GROUND_APPROACH→终态，不含终态后停泊）；臂定义 / N=20 / α=0.05 / MDE=0.10 均不变；v1 已执行结论保留为历史（fixed-window），不回溯改写；须以本版本重跑 N=20 后再判定"
+    - version: 5
+      date: 2026-10-23
+      scope: "P1 机制激活场景重测（ADR-0085）：固定条件由 s08（static·none·nominal）改为 s15_static_none_fov_capture（static·none·fov，hfov 30°/vfov 20°）；臂定义 / primary DV / N=20 / α=0.05 / MDE=0.10 不变；v1（fixed-window）与 v4（s08 active-window）结论均保留为各自固定条件的历史，不回溯改写；须以本版本在 s15 跑 N=20 后再判定"
+    - version: 6
+      date: 2026-10-23
+      scope: "判据语义修正（ADR-0086）：①分离「最小有意义收益 MME（决策门槛，decision.<命题>.minimum_meaningful_effect）」与「样本量可检测效应（规划量，statistics.<命题>.planning.*）」——旧口径把同一 MDE 兼任二者；②判定改**三态**（CI95 下限 > MME → supported；CI95 上限 < MME → falsified；CI 覆盖 MME → inconclusive）；③v1–v5 已执行 verdict 字段**不改写**，v5 补「inconclusive / 未通过门槛」读法（其 CI [+0.0281, +0.1328] 含 0.10，不得读作真实效应 < 10 pt）；④P2 v3 在三态规则下仍为 falsified（其 CI 完全低于 MME），结论不变"
+  # —— 判定规则（v6 三态；ADR-0086）——
+  # P1 协同收益（主线）：协同臂相对**非协同**的 primary DV 提升达到「最小有意义收益 MME」才算成立。
+  # P2 RL 职责分层（副线）：臂 B（规则高层 + 成熟低层）相对臂 A（c2）同理。
+  # **三态**（对 primary，按 95% CI 与 MME 的关系）：
+  #   * supported    —— CI 下限 > MME（对 MME 的单侧检验 p < α）：收益**达到**最小有意义量；
+  #   * falsified    —— CI 上限 < MME：可**排除**达到 MME 的效应（真实效应低于门槛）；
+  #   * inconclusive —— CI **覆盖** MME：既未支持也未排除（旧口径把它误标为"证伪"）。
+  # MME（决策门槛）与「样本量可检测效应」（规划量，见 statistics.*.planning）**分列**，禁止混用。
   decision:
-    p1: "cooperative > non_cooperative (fire_control_opportunity_rate, min_clearance)"
+    # v6：MME 与规划量分列；旧口径（`p<α AND mean(Δ)≥MDE`）保留为 legacy_criterion 仅历史。
+    p1:
+      rule: "cooperative > non_cooperative"
+      arms:
+        cooperate: p1_coop
+        noncooperate: p1_noncoop
+      direction: "coop_minus_noncoop"
+      primary_dv: fire_control_opportunity_rate_active
+      secondary_dv: min_clearance_m
+      legacy_dv: fire_control_opportunity_rate
+      criterion: "three_state_ci_vs_mme"
+      minimum_meaningful_effect: 0.10     # 决策门槛（MME；研究/工程意义显式裁定，不随数据变）
+      minimum_meaningful_effect_unit: "absolute_rate"
+      legacy_criterion: "p < statistics.p1.alpha AND mean(delta) >= statistics.p1.min_detectable_effect（v1–v5 口径，仅历史）"
+      falsification: "CI95 上限 < MME → 可排除达到门槛的效应（真实效应低于门槛）"
+      inconclusive: "CI95 覆盖 MME → 未通过门槛；须报告点估计 + CI + 决断所需 N"
+      claim_scope: "协同观测（显式 oracle 指向臂）在已验证通道族内的收益；不声称真实检测 / sim-to-real"
+      registered_version: 6
+      status: "pre_registered"          # v6 规则已写定；尚无以 v6 判定执行的新 run
+      prior_verdicts:
+        - version: 1
+          run_id: "20261021-w7-rl-b-175313-3256"
+          primary_dv: fire_control_opportunity_rate
+          verdict: "成立（fixed-window；ADR-0071(h) 历史结论，不回溯改写）"
+          note: "ADR-0083 登记窗口口径风险（约 92%/86% 机会拍在终态后）；不作为 v4/v5 判定证据"
+        - version: 4
+          run_id: "20261023-w7-rl-b-p1v4-n20"
+          primary_dv: fire_control_opportunity_rate_active
+          verdict: "证伪（s08 固定条件下；ADR-0071(k)）"
+          note: "场景不足以激活 α（ADR-0084(f)）；不作为 v5 判定证据"
+      pre_registered_v5:
+        scene: s15_static_none_fov_capture
+        date: "2026-10-23"
+        rationale: "ADR-0085(f)(g)：pilot 选 C（静态 + 窄视场）；机制激活（active 可见率 0.359 vs 0.173）"
+        n_paired: 20
+        primary_dv: fire_control_opportunity_rate_active
+        mde: 0.10
+        status: "executed"
+      executed_v5:
+        run_id: "20261023-w7-rl-b-p1v5-n20"
+        date: "2026-10-23"
+        verdict: "证伪（未达预注册 MDE：Δ=+0.0804 < 0.10 且 p=0.0046 显著）"   # 执行日原文（v5 口径），不改写
+        verdict_reading_v6: "inconclusive（未通过预注册门槛）——CI95 [+0.0281, +0.1328] **覆盖** MME 0.10 ⇒ 既未支持也未排除；**不得**读作真实收益 < 10 pt（那需要 CI 上限 < 0.10），亦不得读作收益达到 10 pt（ADR-0086(c)；事后解读、非判定证据）"
+        n_paired: 20
+        primary:
+          dv: fire_control_opportunity_rate_active
+          mean_delta_coop_minus_noncoop: 0.080437
+          ci95: [0.028074, 0.1328]
+          paired_t_p_two_sided: 0.004556
+          wilcoxon_p_two_sided: 0.002225
+          zero_filled_values: 12
+          one_sided_p_vs_mme: 0.778062          # 对 MME 的单侧检验（H0: Δ ≤ 0.10）——事后解读：不能拒绝 H0 ⇒ 不支持
+          planned_detectable_effect_two_sided: 0.0701   # (z_{1−α/2}+z_{1−power})·SD/√n，SD=0.1119、n=20（规划量，非门槛）
+        secondary:
+          dv: min_clearance_m
+          mean_delta_coop_minus_noncoop: -0.412541
+          paired_t_p_two_sided: 0.235917
+        legacy_fixed_window:
+          dv: fire_control_opportunity_rate
+          mean_delta_coop_minus_noncoop: 0.331894
+          paired_t_p_two_sided: 8.64e-05
+          note: "仅描述；含终态后停泊，未参与 v5 判定"
+        note: "机制激活实测：active 可见率 协同 0.473 vs 非协同 0.066（Δ≈41 pt）；协同臂 15/20 INTERCEPT_CONFIRMED（4 MISSION_FAILED + 1 重试耗尽的 infra），非协同 13/20；infra 重试 14 次（协同 9 / 非协同 5），终态 infra 1"
+      executed_v4:
+        run_id: "20261023-w7-rl-b-p1v4-n20"
+        date: "2026-10-23"
+        verdict: "证伪（primary Δ=+0.0278 < MDE=0.10 且 p=0.153 不显著 → 协同收益在 clean DV 下未成立）"
+        n_paired: 20
+        primary:
+          dv: fire_control_opportunity_rate_active
+          mean_delta_coop_minus_noncoop: 0.027801
+          ci95: [-0.011257, 0.066857]
+          paired_t_p_two_sided: 0.152698
+          wilcoxon_p_two_sided: 0.498009
+          zero_filled_values: 3
+        secondary:
+          dv: min_clearance_m
+          mean_delta_coop_minus_noncoop: 0.191059
+          paired_t_p_two_sided: 0.569638
+        legacy_fixed_window:
+          dv: fire_control_opportunity_rate
+          mean_delta_coop_minus_noncoop: 0.281247
+          paired_t_p_two_sided: 0.000179
+          note: "仅描述；与 v1（+0.2988）一致——印证固定窗口的终态后污染，未参与 v4 判定"
+        note: "终态 infra 0/40；9 个 (arm, seed) 触发 infra 重试（coop 3 / noncoop 6），均恢复；协同 18/20 INTERCEPT_CONFIRMED（seeds 4/5 MISSION_FAILED）、非协同 19/20（seed 13）"
     p2:
       rule: "high_level > c2 (equal budget)"
       arms:
@@ -35,12 +133,15 @@ w7b_prereg:
       direction: "b_minus_a"
       primary_dv: fire_control_opportunity_rate_active
       secondary_dv: min_clearance_m
-      test: "two_sided_paired_t"
-      criterion: "p < statistics.p2.alpha AND mean(delta) >= statistics.p2.min_detectable_effect"
-      falsification: "high_level 不显著优于 c2 → 保留 c2（不推翻 ADR-0004）"
+      criterion: "three_state_ci_vs_mme"
+      minimum_meaningful_effect: 0.10     # 决策门槛（MME；v6 起判定读此字段）
+      minimum_meaningful_effect_unit: "absolute_rate"
+      legacy_criterion: "p < statistics.p2.alpha AND mean(delta) >= statistics.p2.min_detectable_effect（v3 口径，仅历史）"
+      falsification: "CI95 上限 < MME → 可排除达到门槛的效应（保留 c2，不推翻 ADR-0004）"
+      inconclusive: "CI95 覆盖 MME → 未通过门槛（保留 c2；须报告点估计 + CI + 决断所需 N）"
       claim_scope: "职责分层（规则高层 + 成熟低层 vs c2）；不得声称训练 RL 优于 c2（ADR-0082）"
-      registered_version: 3
-      status: "executed_falsified"      # v3 已执行并判定（见 executed_v3）；v2 批次 confounded
+      registered_version: 6
+      status: "pre_registered"          # v6 规则已写定；v3 执行记录见 executed_v3（原文保留）
       invalidated_runs:
         - run_id: "20261022-w7-rl-b-112833-1155"
           version: 2
@@ -52,7 +153,8 @@ w7b_prereg:
       executed_v3:
         run_id: "20261022-w7-rl-b-v3-n20r"
         date: "2026-10-22"
-        verdict: "证伪（primary 方向为负且显著；未达 MDE=0.10 → 保留 c2）"
+        verdict: "证伪（primary 方向为负且显著；未达 MDE=0.10 → 保留 c2）"   # 执行日原文（v3 口径），不改写
+        verdict_reading_v6: "falsified —— CI95 [−0.0971, −0.0151] **完全低于** MME 0.10 ⇒ 可排除达到门槛的效应；三态规则下结论与原文一致（ADR-0086(c)）"
         n_paired: 20
         primary:
           dv: fire_control_opportunity_rate_active
@@ -73,6 +175,60 @@ w7b_prereg:
     falsification:
       p1: "cooperative 不显著优于 non_cooperative → 协同收益证伪"
       p2: "high_level 不显著优于 c2 → 保留 c2"
+
+  # —— P1 固定条件（v5；臂定义与 v1/v4 完全相同，固定条件换为机制激活场景 s15）——
+  p1_conditions:
+    scene: s15_static_none_fov_capture
+    prior_scenes:
+      - version: 1
+        scene: s08_static_none_nominal_capture
+      - version: 4
+        scene: s08_static_none_nominal_capture
+    backend: full
+    command_source: rl
+    target_source: air_fusion
+    shield: true
+    obs_horizon_s: 60.0
+    task_goal_follow_target: false      # 两臂同用固定任务目标（非 IV；s15 与 s08 一致）
+    terminal_semantics: "docs/ROS2迁移交接文档.md#terminal-semantics"
+    execution_port: "docs/ROS2迁移交接文档.md#execution-port"
+    iv:
+      cooperate:
+        observe_yaw_mode: target
+        air_tracking_ref: "on"
+        role: "空中机跟随目标航迹 + 机头对准目标（显式 oracle 指向臂）"
+      noncooperate:
+        observe_yaw_mode: velocity
+        air_tracking_ref: "off"
+        role: "空中机固定 figure-8 航迹 + 机头随速度（不指向目标）"
+    iv_note: "α 为两项差异组合（跟踪参考 + 指向），依 ADR-0070(a) 的 α 定义属设计内（ADR-0073(b)）"
+
+  # —— P1 DV 操作化（v4；ADR-0084）——
+  p1_dv:
+    primary:
+      field: fire_control_opportunity_rate_active
+      source: "episode_window_metrics.ticks_fire_control_opportunity / vis_ticks_total"
+      unit: "active 窗口内有效火控机会拍占比"
+      failure_handling: "超时 / 失败 / infra 及其缺值 → 0，计入分母（keep_all_failures_and_infra）；成功回合缺值 → 剔除该配对并计数"
+      rationale: "与 P2 v3 同口径；只计任务进行中的机会，避免 window_fixed_v1 在终态后停泊期间继续累计（v1 实测约 92%/86% 机会拍在终态后）"
+    legacy:
+      field: fire_control_opportunity_rate
+      role: "描述量（window_fixed_v1，60 s；不参与 v4 判定；v1 历史结论的证据）"
+    secondary:
+      field: min_clearance_m
+      unit: "m"
+      failure_handling: "失败回合仍有真实净空；仅缺值配对剔除并计数"
+      role: "报告 + 安全权衡解释；不参与显著性判定"
+    descriptive:
+      - terminal_state
+      - expected_match
+      - visibility_rate
+      - shield_infeasible_rate
+      - intervened_ticks
+      - wall_elapsed_s
+      - rtf
+      - active_window_ticks
+      - fire_control_opportunity_rate   # legacy（window_fixed_v1）
 
   # —— P2 固定条件（两臂只差 IV = 命令源；固定协同）——
   # 全链（含空中协同观测）才能令「固定协同」成立；轻量栈无空中域，不能承载 P2 确证。
@@ -156,8 +312,11 @@ w7b_prereg:
       report: [wall_elapsed_s, rtf]
     note: "两臂均无学习权重与逐臂调参；评估使用同 seed 集合 / 同 timeout / 同 episode 数"
 
-  # —— 样本量 / 显著性（依效应大小在确证实验前设定；此值为当前设定，改动即升 version）——
-  # 顶层字段 = P1 已执行口径（v1，**不**回写）；P2 用下方 `statistics.p2`。
+  # —— 样本量 / 显著性（v6：**规划量**；决策门槛 MME 见 decision.<命题>.minimum_meaningful_effect）——
+  # 顶层字段 = P1 **v1–v5 历史口径**（`p<α AND mean(Δ)≥MDE`，不回溯改写）；P1 现行用 `statistics.p1`，
+  # P2 用 `statistics.p2`。三者当前数值相同（N=20 / α=0.05），分列是为防止跨版本回写。
+  # **口径纪律（ADR-0086）**：本段只写「给定 α / power / σ / N 能检测到多大效应」（可算），
+  # **不得**再把它当判定门槛；判定一律走 `decision.*.minimum_meaningful_effect` + 三态 CI 规则。
   statistics:
     # 每臂配对 episode 数（[F-07](docs/reviews/agc-review-2026-10-14/30-未来.md#f-07) 三级种子 + CRN 配对）。
     n_paired_episodes_per_arm: 20
@@ -165,22 +324,43 @@ w7b_prereg:
     alpha: 0.05
     # 目标把握度。
     power: 0.80
-    # 最小感兴趣效应（有效火控机会率的绝对提升；P1 口径）。
+    # 【legacy】v1–v5 的判定门槛字段（历史口径；v6 起判定不再读它）。
     min_detectable_effect: 0.10
     min_detectable_effect_unit: "absolute_rate"
+    min_detectable_effect_role: "legacy_threshold_v1_v5（仅历史；v6 起判定读 decision.*.minimum_meaningful_effect）"
     # 区间估计：报告置信区间（不剔除失败 / infra，如实计入分母）。
     report_confidence_interval: true
     confidence_level: 0.95
-    # 次量只报告，不参与 P2 显著性判定。
+    # 次量只报告，不参与显著性判定。
     secondary_in_decision: false
-    # P2（v2 新增）：阈值依**已有配对差 SD** 设定，避免沿用 P1 的 0.10 造成低把握度。
+    # P1（v6）：规划量 = 由 α / power / σ / N **计算**得出（不是门槛）。
+    p1:
+      n_paired_episodes_per_arm: 20
+      alpha: 0.05
+      power: 0.80
+      planning:
+        sigma_basis: "v5 run `20261023-w7-rl-b-p1v5-n20` 实测 active-window 配对差 SD=0.1119（n=20；仅规划用）"
+        sigma: 0.1119
+        detectable_effect_two_sided: 0.0701   # (z_{1−α/2}+z_{1−power})·σ/√n → N=20 可检测 ≈0.070
+        formula: "n ≈ ((z_{1−α/2} + z_{1−power}) · σ / (Δ_true − MME))²（要断言 Δ>MME 所需的配对数）"
+        decision_n_examples:
+          margin_0.02: 246
+          margin_0.03: 109
+          margin_0.04: 62
+          margin_0.05: 39
+        note: "MME=0.10 且规划可检测效应 ≈0.070 < MME ⇒ N=20 的典型结局是 inconclusive（设计选择的结果，非数据异常）；要取得 supported/falsified 须按上表加大 N（见 ADR-0086(d)）"
+      report_confidence_interval: true
+      confidence_level: 0.95
+      secondary_in_decision: false
+    # P2（v3 规划量同构；判定门槛见 decision.p2.minimum_meaningful_effect）。
     p2:
       n_paired_episodes_per_arm: 20
       alpha: 0.05
       power: 0.80
-      min_detectable_effect: 0.10
-      min_detectable_effect_unit: "absolute_rate"
-      power_basis: "v3 active-window FCO 的配对差 SD=0.1224（v2 run 20261022-w7-rl-b-112833-1155，n=19，剔除 infra seed8；仅作规划估计，不入判定）；paired t：α=0.05 双侧、N=20 → MDE≈0.078；取 MDE=0.10（更保守），N=20 时实际 power≈0.97。"
+      planning:
+        sigma_basis: "v2 run `20261022-w7-rl-b-112833-1155` active-window 配对差 SD=0.1224（n=19，剔除 infra seed8；仅规划用）"
+        sigma: 0.1224
+        detectable_effect_two_sided: 0.0767
       report_confidence_interval: true
       confidence_level: 0.95
       secondary_in_decision: false
@@ -192,5 +372,5 @@ w7b_prereg:
     same_seed_paired: true            # 同 seed 配对（CRN）
     no_bitwise_physics_claim: true    # 不承诺 bitwise 物理一致（W7-a 已知边界）
   # —— 状态 ——
-  status: "executed"                  # P1 v1 已判定；P2 v3 已执行并判定（证伪，保留 c2）；v2 confounded
-  note: "P1 已在新终态语义下执行并判定（ADR-0071(h)）；P2 臂 B 为规则高层（ADR-0082）；P2 v2 批次因臂信息不等价 + DV 终态后污染被判为 confounded（ADR-0083）；P2 v3 已按 active-window FCO + 同源感知目标执行 N=20 并判定：证伪（primary 方向为负且显著）→ 保留 c2（ADR-0071(j)）。"
+  status: "executed"                  # v5 已执行（未达 MDE，判证伪）；P1 v1 / v4 与 P2 v3 历史执行记录见下
+  note: "P1 v5（机制激活场景 s15_static_none_fov_capture，static + 窄视场 30°/20°）已执行 N=20 并判定：**未达预注册 MDE**——primary active FCO Δ=+0.0804（95% CI [+0.0281, +0.1328]、p=0.0046、n=20），**方向与假设一致且统计显著，但 Δ < MDE 0.10 ⇒ 按预注册判据证伪**（ADR-0085(h) / ADR-0071(l)）。机制激活实测：active 可见率 0.473 vs 0.066（Δ≈41 pt）。P1 v4（s08，active-window）证伪；v1（s08，fixed-window，+0.2988）保留为历史。P2 v2 confounded；P2 v3 已判定证伪 → 保留 c2（ADR-0083 / ADR-0071(j)）。若要以更小效应（≤0.08）为决策终点，须**新预注册 v6**，不得事后改阈值。"
