@@ -251,40 +251,84 @@ private:
     uint64_t hash{0};
     unsigned int sx{0}, sy{0};
     double ox{0.0}, oy{0.0};
-    size_t hard_cells{0};
+    size_t hard_cells{0};          // master costmap 全部层的 254 格数（诊断）
+    size_t sig_hard_cells{0};      // 实际参与地图签名的 254 格数（ADR-0092：默认 static 层）
+    bool signature_from_static{false};
     std::vector<std::pair<std::string, size_t>> layers;  // 层名 -> 硬障碍格数
     std::vector<std::string> layer_unavailable;          // 无法拆分的层（inflation）
   };
 
+  // 地图签名（ADR-0089 / ADR-0092）：
+  //   只取 **static_layer 自身栅格** 的尺寸 / 原点 / LETHAL_OBSTACLE=254 格索引做 FNV-1a；
+  //   obstacle / voxel 层的动态 marking 不参与「地图变化」签名（由周期重规划消费完整 costmap）。
+  //   static 层尚不可用时回退 master，并在日志标注 signature_from_static=false。
   MapSigInfo mapSigInfo(bool with_layers = false) const
   {
     MapSigInfo info;
     auto * cm = costmap_ros_ ? costmap_ros_->getCostmap() : nullptr;
     if (cm == nullptr) {return info;}
-    const unsigned char * data = cm->getCharMap();
-    const unsigned int sx = cm->getSizeInCellsX();
-    const unsigned int sy = cm->getSizeInCellsY();
-    if (data == nullptr || sx == 0 || sy == 0) {return info;}
-    info.sx = sx;
-    info.sy = sy;
+    const unsigned char * master_data = cm->getCharMap();
+    const unsigned int master_sx = cm->getSizeInCellsX();
+    const unsigned int master_sy = cm->getSizeInCellsY();
+    if (master_data == nullptr || master_sx == 0 || master_sy == 0) {return info;}
+    info.sx = master_sx;
+    info.sy = master_sy;
     info.ox = cm->getOriginX();
     info.oy = cm->getOriginY();
+
+    // master 全层硬障碍计数（诊断；不再是签名口径）。
+    const unsigned int mn = master_sx * master_sy;
+    for (unsigned int i = 0; i < mn; ++i) {
+      if (master_data[i] == 254) {++info.hard_cells;}
+    }
+
+    auto * lc = costmap_ros_->getLayeredCostmap();
+    const unsigned char * sig_data = nullptr;
+    unsigned int sig_sx = 0, sig_sy = 0;
+    double sig_ox = info.ox, sig_oy = info.oy;
+    if (lc != nullptr) {
+      for (auto & layer : *lc->getPlugins()) {
+        if (!layer || layer->getName() != "static_layer") {continue;}
+        auto * cl = dynamic_cast<nav2_costmap_2d::CostmapLayer *>(layer.get());
+        if (cl == nullptr) {break;}
+        const unsigned char * d = cl->getCharMap();
+        const unsigned int sx = cl->getSizeInCellsX();
+        const unsigned int sy = cl->getSizeInCellsY();
+        if (d != nullptr && sx > 0 && sy > 0) {
+          sig_data = d;
+          sig_sx = sx;
+          sig_sy = sy;
+          sig_ox = cl->getOriginX();
+          sig_oy = cl->getOriginY();
+          info.signature_from_static = true;
+        }
+        break;
+      }
+    }
+    if (sig_data == nullptr) {
+      // static 层尚未就绪（地图未到 / 尺寸为 0）：回退 master，保持既有行为并显式标注。
+      sig_data = master_data;
+      sig_sx = master_sx;
+      sig_sy = master_sy;
+      info.signature_from_static = false;
+    }
+
     uint64_t h = 1469598103934665603ULL;  // FNV-1a 64 位偏移基
     const auto mix = [&h](uint64_t v) {
         for (int i = 0; i < 8; ++i) {h ^= (v >> (8 * i)) & 0xFFULL; h *= 1099511628211ULL;}
       };
-    mix(sx); mix(sy);
+    mix(sig_sx); mix(sig_sy);
     uint64_t oxb = 0, oyb = 0;
-    std::memcpy(&oxb, &info.ox, sizeof(oxb)); std::memcpy(&oyb, &info.oy, sizeof(oyb));
+    std::memcpy(&oxb, &sig_ox, sizeof(oxb)); std::memcpy(&oyb, &sig_oy, sizeof(oyb));
     mix(oxb); mix(oyb);
-    const unsigned int n = sx * sy;
+    const unsigned int n = sig_sx * sig_sy;
     for (unsigned int i = 0; i < n; ++i) {
-      if (data[i] == 254) {mix(i); ++info.hard_cells;}   // 仅 LETHAL_OBSTACLE 参与签名（ADR-0089）
+      if (sig_data[i] == 254) {mix(i); ++info.sig_hard_cells;}   // 仅 LETHAL_OBSTACLE（ADR-0089）
     }
     info.hash = h;
+
     // 分层拆分仅在需要诊断日志时计算（每 tick 的地图比较不付这份开销）。
-    auto * lc = with_layers ? costmap_ros_->getLayeredCostmap() : nullptr;
-    if (lc != nullptr) {
+    if (with_layers && lc != nullptr) {
       for (auto & layer : *lc->getPlugins()) {
         if (!layer) {continue;}
         auto * cl = dynamic_cast<nav2_costmap_2d::CostmapLayer *>(layer.get());
@@ -293,7 +337,7 @@ private:
         const unsigned int ln = cl->getSizeInCellsX() * cl->getSizeInCellsY();
         size_t cnt = 0;
         if (ld != nullptr) {
-          // 与主签名同口径：仅 LETHAL_OBSTACLE；各层内部栅格的 NO_INFORMATION(255) 不计。
+          // 与签名同口径：仅 LETHAL_OBSTACLE；各层内部栅格的 NO_INFORMATION(255) 不计。
           for (unsigned int i = 0; i < ln; ++i) {if (ld[i] == 254) {++cnt;}}
         }
         info.layers.emplace_back(layer->getName(), cnt);
@@ -328,11 +372,12 @@ private:
     }
     RCLCPP_INFO(
       get_logger(),
-      "重规划触发：地图变化（costmap 硬障碍签名偏离） map_sig=0x%016lx "
+      "重规划触发：地图变化（costmap 静态硬障碍签名偏离） map_sig=0x%016lx "
       "last_plan_map_sig=0x%016lx sx=%u sy=%u origin=(%.3f,%.3f) hard_cells=%zu "
-      "layers=[%s] goal=(%.3f,%.3f) t=%.3f",
+      "layers=[%s] goal=(%.3f,%.3f) t=%.3f sig_hard_cells=%zu signature_from_static=%d",
       info.hash, last_plan_map_sig_, info.sx, info.sy, info.ox, info.oy, info.hard_cells,
-      layers.c_str(), goal_x_, goal_y_, now_s);
+      layers.c_str(), goal_x_, goal_y_, now_s, info.sig_hard_cells,
+      info.signature_from_static ? 1 : 0);
   }
 
   bool needReplan(double now_s)

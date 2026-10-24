@@ -24,6 +24,7 @@
 import argparse
 import json
 import math
+import struct
 import os
 import re
 import signal
@@ -39,6 +40,7 @@ from agc_msgs.msg import AgcTaskState, TargetTrack, TargetTrackArray
 from geometry_msgs.msg import PoseStamped, TransformStamped, TwistStamped
 from lifecycle_msgs.srv import ChangeState, GetState
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
+from sensor_msgs.msg import LaserScan, PointCloud2, PointField
 from rcl_interfaces.msg import Log
 from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
@@ -139,6 +141,9 @@ class Bench(Node):
         self.odom_pub = self.create_publisher(Odometry, ODOM_TOPIC, 20)
         self.map_pub = self.create_publisher(OccupancyGrid, MAP_TOPIC, LATCHED)
         self.target_pub = self.create_publisher(TargetTrackArray, TARGET_TOPIC, 20)
+        # ADR-0092 C7/C8：合成动态层 marking（scan / pointcloud）；其他用例不发布。
+        self.scan_pub = self.create_publisher(LaserScan, '/agc/ground/scan_filtered', 10)
+        self.points_pub = self.create_publisher(PointCloud2, '/agc/sim/car_points', 10)
         # 反复 latched 发布 world→car/base_link 静态 TF，确定性覆盖 costmap 激活的 TF 发现窗口。
         self.tf_pub = self.create_publisher(TFMessage, '/tf_static', LATCHED)
         self.create_subscription(Path, PATH_TOPIC, self._on_path, 10)
@@ -218,6 +223,46 @@ class Bench(Node):
         s.state = GROUND_APPROACH
         s.state_name = 'GROUND_APPROACH'
         self.state_pub.publish(s)
+
+    def pub_dynamic_marking(self, x, y, z=2.0):
+        """ADR-0092 C7/C8：在 (x,y,z) 发布一帧合成 scan + pointcloud（移动目标样式）。
+
+        scan 用 car/base_link 坐标系，只在一个方位角给出距离；pointcloud 用 world 系给一个 3D 点。
+        不改变任何话题 / 参数，仅用于验证 dynamic 层 marking 不应触发地图签名。
+        """
+        scan = LaserScan()
+        scan.header.frame_id = 'car/base_link'
+        scan.header.stamp = self.get_clock().now().to_msg()
+        scan.angle_min = -math.pi
+        scan.angle_max = math.pi
+        scan.angle_increment = 2.0 * math.pi / 360.0
+        scan.range_min = 0.05
+        scan.range_max = 20.0
+        n = int(round((scan.angle_max - scan.angle_min) / scan.angle_increment)) + 1
+        scan.ranges = [float('inf')] * n
+        bearing = math.atan2(y - self.y, x - self.x)
+        rng = math.hypot(x - self.x, y - self.y)
+        idx = int(round((bearing - scan.angle_min) / scan.angle_increment))
+        if 0 <= idx < n:
+            scan.ranges[idx] = max(scan.range_min, min(scan.range_max, rng))
+        self.scan_pub.publish(scan)
+
+        pc = PointCloud2()
+        pc.header.frame_id = 'world'
+        pc.header.stamp = scan.header.stamp
+        pc.height = 1
+        pc.width = 1
+        pc.fields = [
+            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+        ]
+        pc.is_bigendian = False
+        pc.point_step = 12
+        pc.row_step = 12
+        pc.is_dense = True
+        pc.data = struct.pack('fff', float(x), float(y), float(z))
+        self.points_pub.publish(pc)
 
     def pub_goal(self, x, y):
         g = PoseStamped()
@@ -795,6 +840,88 @@ def sc_c6_target_twist(log_dir, cfg_dir):
     return res
 
 
+
+def sc_c7_dynamic_marking(log_dir, cfg_dir):
+    h = Bench('c7')
+    proc, log = _prepare('c7_dynamic_marking', cfg_dir, log_dir)
+    res = {'case': 'c7_dynamic_marking'}
+    try:
+        ok, life = h.ensure_active()
+        res['lifecycle'] = life
+        got = h.spin_until(lambda: len(h.paths) > 0, 6.0, goal=FIXED_GOAL)
+        res['first_path'] = bool(got)
+        if not ok or not got:
+            res['error'] = 'ground_baseline 未激活或无路径'
+            return res
+        h.pump(1.5, goal=FIXED_GOAL)
+
+        t0 = time.time()
+
+        def move(el):
+            x = TARGET_XY[0] + 0.6 * math.sin(2 * math.pi * 1.0 * el)
+            y = TARGET_XY[1] + 0.6 * math.cos(2 * math.pi * 1.0 * el)
+            h.pub_map()
+            h.pub_goal(*FIXED_GOAL)
+            h.pub_dynamic_marking(x, y, 2.0)
+
+        h.pump_fn(4.0, move)
+        t1 = time.time()
+        res.update(_case_result(
+            'c7_dynamic_marking', '0 次地图变化（动态层 marking 不参与静态签名）', t0, t1, h,
+            extra={'dynamic_amplitude_m': 0.6, 'dynamic_hz': 1.0, 'marking_z_m': 2.0},
+            note='合成移动目标样式 scan / pointcloud marking；fixed map / goal 不变。'))
+    finally:
+        _kill(proc)
+        h.destroy_node()
+        log.close()
+    return res
+
+
+def sc_c8_static_with_dynamic(log_dir, cfg_dir):
+    h = Bench('c8')
+    proc, log = _prepare('c8_static_with_dynamic', cfg_dir, log_dir)
+    res = {'case': 'c8_static_with_dynamic'}
+    cx = int((6.0 - MAP_OX) / MAP_RES)
+    cy = int((0.0 - MAP_OY) / MAP_RES)
+    obstructed = [cy * MAP_W + cx + dx + dy * MAP_W for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
+    try:
+        ok, life = h.ensure_active()
+        res['lifecycle'] = life
+        got = h.spin_until(lambda: len(h.paths) > 0, 6.0, goal=FIXED_GOAL)
+        res['first_path'] = bool(got)
+        if not ok or not got:
+            res['error'] = 'ground_baseline 未激活或无路径'
+            return res
+        h.pump(1.5, goal=FIXED_GOAL)
+        tb0 = time.time()
+        h.pump(2.0, goal=FIXED_GOAL)
+        tb1 = time.time()
+        baseline = _case_result('c8_baseline', '基线固定地图 + 无动态输入：0 次地图变化',
+                                tb0, tb1, h)
+        t0 = time.time()
+
+        def add_obstacle(el):
+            x = TARGET_XY[0] + 0.6 * math.sin(2 * math.pi * 1.0 * el)
+            y = TARGET_XY[1] + 0.6 * math.cos(2 * math.pi * 1.0 * el)
+            h.pub_map(occupied_idx=obstructed)
+            h.pub_goal(*FIXED_GOAL)
+            h.pub_dynamic_marking(x, y, 2.0)
+
+        h.pump_fn(2.5, add_obstacle)
+        t1 = time.time()
+        res['baseline_window'] = baseline
+        res['obstacle_cells'] = len(obstructed)
+        res.update(_case_result(
+            'c8_static_with_dynamic', '恰好 1 次地图变化（真实静态增障仍触发）', t0, t1, h,
+            extra={'dynamic_amplitude_m': 0.6, 'dynamic_hz': 1.0, 'obstacle_cells': len(obstructed)},
+            note='static 层在车前 6 m 增 3x3 occupied；同时动态 scan/pointcloud 移动。'))
+    finally:
+        _kill(proc)
+        h.destroy_node()
+        log.close()
+    return res
+
+
 CASES = [
     ('c1_fixed', sc_c1_fixed),
     ('c2_goal_step', sc_c2_goal_step),
@@ -802,6 +929,8 @@ CASES = [
     ('c4_map_add_obstacle', sc_c4_map_add_obstacle),
     ('c5_map_free_unknown', sc_c5_map_free_unknown),
     ('c6_target_twist', sc_c6_target_twist),
+    ('c7_dynamic_marking', sc_c7_dynamic_marking),
+    ('c8_static_with_dynamic', sc_c8_static_with_dynamic),
 ]
 
 
@@ -814,6 +943,8 @@ EXPECT = {
     'c4_map_add_obstacle': {'goal_identity': 0, 'map_change': 1},
     'c5_map_free_unknown': {'goal_identity': 0, 'map_change': 0},
     'c6_target_twist': {'goal_identity': 0, 'map_change': 0},
+    'c7_dynamic_marking': {'goal_identity': 0, 'map_change': 0},
+    'c8_static_with_dynamic': {'goal_identity': 0, 'map_change': 1},
 }
 
 
@@ -821,7 +952,7 @@ def _verdict(case, r):
     exp = EXPECT.get(case, {})
     if 'error' in r:
         return '证据不足', '台架未激活 / 无路径'
-    if case == 'c4_map_add_obstacle' and 'baseline_window' in r:
+    if case in ('c4_map_add_obstacle', 'c8_static_with_dynamic') and 'baseline_window' in r:
         base = r['baseline_window']['triggers']
         if base['map_change'] != 0:
             return '缺陷', '固定地图基线窗已出现地图触发（应为 0）'
