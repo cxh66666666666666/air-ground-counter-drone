@@ -248,3 +248,7 @@ accepted
 - 后续 ADR：[ADR-0072](0072-px4-attitude-quaternion-field-order-and-full-chain-observation-fix.md)（整链控制权交接 + 观测链根因修复，(g)）
 - 规格：[`.trae/specs/w7-rl-b/`](../../.trae/specs/w7-rl-b/spec.md)
 - 预注册：[`src/agc_rl/config/w7b_prereg.yaml`](../../src/agc_rl/config/w7b_prereg.yaml)
+
+## 闭合注记（2026-10-24）
+
+W7-b 已按 [ADR-0093](0093-w7b-exit-closure-and-prefix-provenance.md) 闭合。P1 v5 = `inconclusive`、P2 v3 = `falsified` / 保留 c2、P2 v2 = `confounded` 的原文与 `executed_*` 字段均保留；全部确证 / 消融 / 诊断 run 标注 **pre-fix**（火控 [ADR-0091](0091-fire-control-inflight-lifecycle-decoupling.md)；P2 v3 亦早于 [ADR-0089](0089-map-signature-lethal-only-for-replan-trigger.md)）。P2 侧协同观测 / 目标预测消融为**显式范围裁定**（不纳入 W7-b 出口）。v7 未注册；在线 RL 未进入；W7-c / W8 未开始。

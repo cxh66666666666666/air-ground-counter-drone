@@ -220,3 +220,7 @@ P2 v3（[ADR-0071](0071-w7b-adjudication-record-and-pending-arms.md)(j)）判定
 - 臂定义：[ADR-0073](0073-p1-arm-fairness-noncoop-fixed-trajectory.md)（`air_tracking_ref` + C10 hold 自锁实证）
 - 上游结果：[ADR-0085](0085-w7b-p1-mechanism-activating-scenario-pilot.md)(h)(i)、[ADR-0071](0071-w7b-adjudication-record-and-pending-arms.md)(j)(l)
 - 实现：[`w7b_arms_runner.py`](../../scripts/w7b_arms_runner.py)、[`w7b_p1_ablation.py`](../../scripts/w7b_p1_ablation.py)、[`run_logger.cpp`](../../src/agc_task/src/run_logger.cpp)
+
+## 闭合注记（2026-10-24）
+
+W7-b 已按 [ADR-0093](0093-w7b-exit-closure-and-prefix-provenance.md) 闭合。本 ADR 的 P1 2×2 消融为**估计型**、不改 verdict，其 run 早于火控修复 [ADR-0091](0091-fire-control-inflight-lifecycle-decoupling.md)，射击时序字段标注为 **pre-fix**。P2 侧协同观测 / 目标预测消融未执行，按 ADR-0093(d) 显式范围裁定，不纳入 W7-b 出口。W7-c / W8 未开始。
