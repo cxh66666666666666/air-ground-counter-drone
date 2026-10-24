@@ -175,6 +175,9 @@ def main():
     fired = [l for l in mon.fire if l.startswith('SHOT_FIRED')]
     hit = [l for l in mon.fire if l.startswith('SHOT_HIT')]
     miss = [l for l in mon.fire if l.startswith('SHOT_MISS')]
+    # ADR-0091：SHOT_ABORTED（episode_reset / clock_regression）是**独立结局**，
+    # 不冒充命中 / 失手，也不构成「完整射击闭环」（故不进入 resolved_ids）。
+    aborted = [l for l in mon.fire if l.startswith('SHOT_ABORTED')]
     fired_ids = {shot_of(l) for l in fired}
     resolved_ids = {shot_of(l) for l in hit + miss}
     closed = sorted(fired_ids & resolved_ids)
@@ -184,6 +187,7 @@ def main():
         'capture_evidence': mon.evidence,
         'capture_hit_values': mon.hit_vals,
         'n_shot_fired': len(fired), 'n_shot_hit': len(hit), 'n_shot_miss': len(miss),
+        'n_shot_aborted': len(aborted),
         'closed_shot_ids': closed,
         'wall_elapsed_s': time.monotonic() - wall_start,
     })

@@ -51,6 +51,9 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_target_motion_filter test/test_target_motion_filter.cpp)
   target_include_directories(test_target_motion_filter PRIVATE include)
+  # ADR-0091：火控在飞生命周期（在飞推进 / 落地 / 超时 / 中止）确定性单测
+  ament_add_gtest(test_dynamic_fire_control test/test_dynamic_fire_control.cpp)
+  target_include_directories(test_dynamic_fire_control PRIVATE include)
 endif()
 
 ament_package()

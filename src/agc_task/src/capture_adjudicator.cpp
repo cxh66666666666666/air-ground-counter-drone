@@ -12,6 +12,12 @@
 //      网落地 / 超 net_flight_timeout_s → 失手；随后进入冷却 fire_cooldown_s。
 //   ⑥ 证据：shot_id（epoch-seq）、射击时刻、预测目标位、最近逼近距离、命中/失手、飞行时长。
 //
+// 生命周期规则（ADR-0091）：网一旦在飞，弹道时钟 / 落地 / 超时结算**独立于**发射资格——
+//   车 / 目标位姿失效、置信度下降、目标越出适用高度 / 可达集 / 水平射程时仍**每拍**推进；
+//   目标无效时不判命中（不用缓存位姿），但落地 / 超时照常结算。落地 / 超时一律以 ROS 仿真时钟
+//   （use_sim_time=true）判定。每次 SHOT_FIRED 恰有一个结局：SHOT_HIT / SHOT_MISS，或复位 /
+//   时钟回退时的显式 SHOT_ABORTED（reason=episode_reset|clock_regression）。
+//
 // 模型边界（如实，不得外推）：网的弹道在本节点内逐帧积分（非 GZ 物理刚体）；
 //   「与 GZ 交叉核验」指逐帧与 GZ 目标/车真值位姿比对（目标运动来自 GZ 真值旁路），
 //   非把网做成 GZ 实体。applicable_* 高度与网参数仍为可标定暂定值；载荷物理启用后须重标。
@@ -28,7 +34,8 @@
 //           CAPTURE_NET ep=<task episode id> t=<ros_sec> target=<id> shot=<id>；非命令者）
 //         /agc/task/envelope_in（std_msgs/Bool，可交战：目标是否在火控交战门内）
 //         /agc/task/envelope_jam（std_msgs/Bool，独立干扰作用包络，与网弹道不同源）
-//         /agc/task/fire_control（std_msgs/String，火控事件：SHOT_FIRED|SHOT_HIT|SHOT_MISS shot=<id> …）
+//         /agc/task/fire_control（std_msgs/String，火控事件：
+//           SHOT_FIRED|SHOT_HIT|SHOT_MISS|SHOT_ABORTED shot=<id> …；中止事件附加 reason=<...> t=<sim>）
 //         /agc/task/capture_evidence（std_msgs/String，标注：命中/失手/越界/不可达，限频跳变）
 //   参数（launch/config 单一注入，节点不得覆写；契约 #params）：net_v0_mps / net_angle_deg / net_g /
 //         net_diameter_m / net_drag / launcher_height_m / net_t_exp_s / fire_cooldown_s /
@@ -49,269 +56,15 @@
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 
-#include "agc_task/target_motion_filter.hpp"
+#include "agc_task/dynamic_fire_control.hpp"
 
 using AgcTaskState = agc_msgs::msg::AgcTaskState;
-
-namespace
-{
-struct Pose2
-{
-  double x{0.0}, y{0.0}, z{0.0};
-  bool valid{false};
-};
-
-struct Vec3
-{
-  double x{0.0}, y{0.0}, z{0.0};
-};
-
-struct FireParams
-{
-  double v0{6.5};           // 发射初速 m/s
-  double angle_rad{1.309};  // 抛射角 75°
-  double g{9.81};           // 重力
-  double diameter{1.0};     // 展开后有效直径 m
-  double drag{0.9};         // 水平速度折算因子（对可及集射程）
-  double launcher_h{0.0};   // 发射器相对车体基准高度 m
-  double applicable_min{0.0};
-  double applicable_max{2.009};
-  double t_exp_s{0.2};           // 网展开时间 s（此期间有效半径线性增长）
-  double cooldown_s{2.0};        // 射击后冷却 s
-  double flight_timeout_s{3.0};  // 网飞行总时长上限 s（超时＝失手）
-  // ADR-0079（B2）：目标运动估计参数（时间窗回归 + 静止阈值 + 新息门 + 提前量上限）
-  agc_task::TargetMotionFilter::Params target_filter{};
-};
-
-// 裁决结果：命中 + 交战门 + 火控事件（W7-b T2 扩展）。
-enum class CaptureStatus
-{
-  kHit,                    // 本拍判定命中
-  kShotFired,              // 本拍发射（新 shot）
-  kInFlight,               // 网在飞（未决）
-  kMiss,                   // 网落地 / 超时 → 失手
-  kCooldown,               // 冷却中 / 不可发射
-  kOutOfApplicableRange,   // h 超出适用高度 → 不判命中并标注
-  kUnreachable,            // 该高度不可达 → 不判命中并标注
-  kOutOfEnvelope,          // 适用高度内但水平超出可交战范围（正常未入包络）
-  kInvalid                 // 车 / 目标位姿缺失（不裁决、不标注）
-};
-
-struct CaptureDecision
-{
-  CaptureStatus status{CaptureStatus::kInvalid};
-  bool hit{false};
-  bool engaged{false};
-  double dist{0.0};
-  double h{0.0};
-  double t_fire{0.0};
-  double flight_s{0.0};       // 命中 / 失手时刻的飞行时长
-  double miss_dist{0.0};      // 最近逼近距离
-  Vec3 predicted{0.0, 0.0, 0.0};
-  Vec3 target_vel{0.0, 0.0, 0.0};   // ADR-0079：发射时的滤波后目标速度（证据）
-  Vec3 est{0.0, 0.0, 0.0};          // W7-b T3：发射时的滤波后目标位置（诊断）
-  double t_est{0.0};                // W7-b T3：predictTarget 迭代后用于瞄准的到达时间（诊断）
-  std::string shot_id;
-};
-
-// 可插拔裁决器接口（R9）：现为最小动态火控（逐帧弹道），后续可换真实弹道（含 GZ 网体）。
-class CaptureAdjudicator
-{
-public:
-  virtual ~CaptureAdjudicator() = default;
-  virtual void reset(int epoch) = 0;
-  virtual CaptureDecision step(
-    const Pose2 & car, const Pose2 & target,
-    double t_s, bool allow_fire) = 0;
-};
-}  // namespace
-
-// 最小动态火控裁决器：交战门 + 射击时刻 + 目标预测 + 逐帧弹道 + 命中/失手 + 冷却。
-class DynamicFireControlAdjudicator : public CaptureAdjudicator
-{
-public:
-  explicit DynamicFireControlAdjudicator(const FireParams & p) : p_(p) {target_filter_.setParams(p_.target_filter);}
-
-  void reset(int epoch) override
-  {
-    epoch_ = epoch;
-    in_flight_ = false;
-    have_shot_ = false;
-    cooldown_until_ = -1.0;
-    shot_seq_ = 0;
-    target_filter_.reset();
-  }
-
-  CaptureDecision step(
-    const Pose2 & car, const Pose2 & target,
-    double t_s, bool allow_fire) override
-  {
-    CaptureDecision d;
-    if (!car.valid || !target.valid) {return d;}   // kInvalid
-
-    // ADR-0079：先更新目标运动估计，再用**滤波后**的位置做交战门 / 瞄准（不用单帧原始噪声）。
-    target_filter_.update(t_s, agc_task::Vec3d{target.x, target.y, target.z});
-    const agc_task::Vec3d tf = target_filter_.position();
-
-    const double dx = tf.x - car.x, dy = tf.y - car.y;
-    d.dist = std::hypot(dx, dy);
-    // R-020：高度含车体——h = target.z − car.z − launcher_h。
-    d.h = tf.z - car.z - p_.launcher_h;
-
-    // ① 交战门：适用高度 → 可达 → 水平射程
-    if (d.h < 0.0 || d.h < p_.applicable_min || d.h > p_.applicable_max) {
-      d.status = CaptureStatus::kOutOfApplicableRange;
-      return d;
-    }
-    const double vy0 = p_.v0 * std::sin(p_.angle_rad);
-    const double disc = vy0 * vy0 - 2.0 * p_.g * d.h;
-    if (disc < 0.0) {
-      d.status = CaptureStatus::kUnreachable;
-      return d;
-    }
-    const double t_desc = (vy0 + std::sqrt(disc)) / p_.g;   // 下降段到达该高度的时间
-    const double reach = p_.v0 * std::cos(p_.angle_rad) * t_desc * p_.drag;
-    if (d.dist > reach + 0.5 * p_.diameter) {
-      d.status = CaptureStatus::kOutOfEnvelope;   // 正常未入包络（不标注）
-      return d;
-    }
-    d.engaged = true;    // 可交战（/agc/task/envelope_in）
-
-    // ④ 网在飞 → 逐帧推进 + 与 GZ 真值目标位姿作球比对
-    if (in_flight_) {
-      const Vec3 net = netPos(t_s);
-      const double d3 = dist3(net, target);
-      if (!have_miss_dist_ || d3 < miss_dist_) {miss_dist_ = d3; have_miss_dist_ = true;}
-      d.shot_id = shot_id_;
-      d.t_fire = t_fire_;
-      d.miss_dist = miss_dist_;
-      const double r = radius(t_s);
-      if (d3 <= r) {
-        in_flight_ = false;
-        cooldown_until_ = t_s + p_.cooldown_s;
-        d.hit = true;
-        d.status = CaptureStatus::kHit;
-        d.flight_s = t_s - t_fire_;
-        return d;
-      }
-      const bool landed = net.z < (net_z0_ - 0.01);
-      const bool timeout = (t_s - t_fire_) > p_.flight_timeout_s;
-      if (landed || timeout) {
-        in_flight_ = false;
-        cooldown_until_ = t_s + p_.cooldown_s;
-        d.status = CaptureStatus::kMiss;
-        d.flight_s = t_s - t_fire_;
-        return d;
-      }
-      d.status = CaptureStatus::kInFlight;
-      return d;
-    }
-
-    // ⑤ 冷却 / 不可发射
-    if (t_s < cooldown_until_) {
-      d.status = CaptureStatus::kCooldown;
-      return d;
-    }
-    if (!allow_fire || !target_filter_.settled()) {
-      d.status = CaptureStatus::kCooldown;   // 冷却 / 未授权 / 运动估计未就绪（不发弹）
-      return d;
-    }
-
-    // ②③ 发射：以目标预测方位角瞄准（ADR-0079：滤波后位置 + 有上限的提前量）
-    double t_est = 0.0;
-    const Vec3 pred = predictTarget(car, tf, t_est);
-    const double pdx = pred.x - car.x, pdy = pred.y - car.y;
-    const double pdist = std::hypot(pdx, pdy);
-    ux_ = (pdist > 1e-6) ? (pdx / pdist) : 1.0;
-    uy_ = (pdist > 1e-6) ? (pdy / pdist) : 0.0;
-
-    ++shot_seq_;
-    shot_id_ = std::to_string(epoch_) + "-" + std::to_string(shot_seq_);
-    t_fire_ = t_s;
-    net_x0_ = car.x;
-    net_y0_ = car.y;
-    net_z0_ = car.z + p_.launcher_h;
-    in_flight_ = true;
-    have_shot_ = true;
-    miss_dist_ = std::numeric_limits<double>::infinity();
-    have_miss_dist_ = false;
-
-    d.status = CaptureStatus::kShotFired;
-    d.shot_id = shot_id_;
-    d.t_fire = t_s;
-    d.predicted = pred;
-    d.est = Vec3{tf.x, tf.y, tf.z};
-    d.t_est = t_est;
-    const agc_task::Vec3d fv = target_filter_.velocity();
-    d.target_vel = Vec3{fv.x, fv.y, fv.z};
-    d.miss_dist = miss_dist_;
-    return d;
-  }
-
-  int shotSeq() const {return shot_seq_;}
-  bool inFlight() const {return in_flight_;}
-
-private:
-  // 网逐帧弹道位置：水平 = v0·cosθ·drag·Δt（常速）；垂直 = v0·sinθ·Δt − ½gΔt²。
-  Vec3 netPos(double t) const
-  {
-    const double dt = t - t_fire_;
-    const double vh = p_.v0 * std::cos(p_.angle_rad) * p_.drag;
-    Vec3 n;
-    n.x = net_x0_ + vh * ux_ * dt;
-    n.y = net_y0_ + vh * uy_ * dt;
-    n.z = net_z0_ + p_.v0 * std::sin(p_.angle_rad) * dt - 0.5 * p_.g * dt * dt;
-    return n;
-  }
-
-  // 有效半径：展开时间内线性增长至 d/2。
-  double radius(double t) const
-  {
-    const double dt = t - t_fire_;
-    const double r_full = 0.5 * p_.diameter;
-    if (dt <= 0.0) {return 0.0;}
-    if (dt < p_.t_exp_s) {return r_full * (dt / p_.t_exp_s);}
-    return r_full;
-  }
-
-  // 目标预测：按预测到达时间（水平射程 / 网水平速度）迭代求交会点，再乘滤波后速度。
-  //   ADR-0079：不使用逐帧位置差分；静止目标的提前量为 0，移动目标提前量有上限。
-  Vec3 predictTarget(const Pose2 & car, const agc_task::Vec3d & tp, double & t_est_out) const
-  {
-    const double vh = std::max(p_.v0 * std::cos(p_.angle_rad) * p_.drag, 1e-3);
-    double t_est = std::hypot(tp.x - car.x, tp.y - car.y) / vh;
-    double t_used = t_est;
-    Vec3 pred{tp.x, tp.y, tp.z};
-    for (int i = 0; i < 2; ++i) {
-      t_est = std::min(t_est, p_.flight_timeout_s);
-      t_used = t_est;
-      const agc_task::Vec3d q = target_filter_.predicted(t_est);
-      pred = Vec3{q.x, q.y, q.z};
-      t_est = std::hypot(q.x - car.x, q.y - car.y) / vh;
-    }
-    t_est_out = t_used;   // 实际用于瞄准的到达时间（诊断；不参与弹道）
-    return pred;
-  }
-
-  static double dist3(const Vec3 & a, const Pose2 & b)
-  {
-    return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) +
-                     (a.z - b.z) * (a.z - b.z));
-  }
-
-  FireParams p_;
-  agc_task::TargetMotionFilter target_filter_;
-  int epoch_{-1};
-  int shot_seq_{0};
-  bool in_flight_{false};
-  bool have_shot_{false};
-  double t_fire_{0.0};
-  double net_x0_{0.0}, net_y0_{0.0}, net_z0_{0.0}, ux_{1.0}, uy_{0.0};
-  double cooldown_until_{-1.0};
-  double miss_dist_{0.0};
-  bool have_miss_dist_{false};
-  std::string shot_id_;
-};
+using agc_task::CaptureAdjudicator;
+using agc_task::CaptureDecision;
+using agc_task::CaptureStatus;
+using agc_task::DynamicFireControlAdjudicator;
+using agc_task::FireParams;
+using agc_task::Pose2;
 
 class CaptureAdjudicatorNode : public rclcpp::Node
 {
@@ -342,7 +95,7 @@ public:
     p.target_filter.gate_m = declare_parameter<double>("target_gate_m", p.target_filter.gate_m);
     p.target_filter.pos_alpha = declare_parameter<double>("target_pos_alpha", p.target_filter.pos_alpha);
     p.target_filter.max_lead_m = declare_parameter<double>("target_max_lead_m", p.target_filter.max_lead_m);
-    model_id_ = declare_parameter<std::string>("model_id", "net_ballistic_frame_v1");
+    model_id_ = declare_parameter<std::string>("model_id", "net_ballistic_frame_v2");
     p.applicable_min = declare_parameter<double>("applicable_min_alt_m", 0.0);
     p.applicable_max = declare_parameter<double>("applicable_max_alt_m", 2.009);
     applicableMin_ = p.applicable_min;
@@ -447,24 +200,34 @@ private:
     const bool target_fresh =
       target_.valid && (t - target_rx_).seconds() <= target_max_age_s_ &&
       target_conf_ >= confidence_min_;
-    if (!car_fresh || !target_fresh) {return;}
+
+    // ADR-0091：新鲜度 / 置信度编码为位姿有效性，**不**提前 return —— 在飞网每拍都要推进。
+    Pose2 car = car_;
+    car.valid = car_fresh;
+    Pose2 target = target_;
+    target.valid = target_fresh;
 
     const bool window_open = (task_state_ == AgcTaskState::GROUND_APPROACH);
     const bool identity_ok =
       required_target_id_.empty() || (target_id_ == required_target_id_);
-    const bool allow_fire = window_open && identity_ok && interception_authorized_ && have_epoch_;
+    const bool allow_fire =
+      car_fresh && target_fresh && window_open && identity_ok && interception_authorized_ &&
+      have_epoch_;
 
-    const CaptureDecision d = adjudicator_->step(car_, target_, t_s, allow_fire);
+    const CaptureDecision d = adjudicator_->step(car, target, t_s, allow_fire);
 
-    std_msgs::msg::Bool eb;
-    eb.data = d.engaged;
-    env_pub_->publish(eb);
+    // 输入失效时不发布 envelope（保持既有 FCO 口径）；在飞推进 / 终局仍由下方 switch 处理。
+    if (car_fresh && target_fresh) {
+      std_msgs::msg::Bool eb;
+      eb.data = d.engaged;
+      env_pub_->publish(eb);
 
-    const double hj = target_.z - car_.z;
-    const double jdist = std::hypot(target_.x - car_.x, target_.y - car_.y);
-    std_msgs::msg::Bool jb;
-    jb.data = (hj >= jam_min_ && hj <= jam_max_ && jdist <= jam_max_range_);
-    jam_env_pub_->publish(jb);
+      const double hj = target.z - car.z;
+      const double jdist = std::hypot(target.x - car.x, target.y - car.y);
+      std_msgs::msg::Bool jb;
+      jb.data = (hj >= jam_min_ && hj <= jam_max_ && jdist <= jam_max_range_);
+      jam_env_pub_->publish(jb);
+    }
 
     switch (d.status) {
       case CaptureStatus::kShotFired:
@@ -503,23 +266,42 @@ private:
           "SHOT_MISS shot=%s model_id=%s h=%.3f dist=%.3f flight=%.3f s miss_dist=%.3f m epoch=%d",
           d.shot_id.c_str(), model_id_.c_str(), d.h, d.dist, d.flight_s, d.miss_dist, current_epoch_);
         break;
+      case CaptureStatus::kAborted:
+        // ADR-0091：显式中止（episode_reset / clock_regression）——不发布 capture_hit、不写 CAPTURE_NET。
+        publishFireControl("SHOT_ABORTED", d);
+        publishEvidence(evidenceString("SHOT_ABORTED", d.shot_id, d));
+        RCLCPP_WARN(get_logger(),
+          "SHOT_ABORTED shot=%s reason=%s t=%.3f flight=%.3f s miss_dist=%.3f m model_id=%s epoch=%d",
+          d.shot_id.c_str(), d.reason.c_str(), d.t_event, d.flight_s, d.miss_dist,
+          model_id_.c_str(), current_epoch_);
+        break;
       default:
         break;
     }
 
-    const std::string label = skipLabel(d.status);
-    if (!label.empty() && label != last_skip_label_) {
-      last_skip_label_ = label;
-      publishEvidence(evidenceString("CAPTURE_SKIP", label, d));
-    } else if (label.empty()) {
-      last_skip_label_.clear();
+    // 门标注只在两路输入均有效的拍产生（与既有 FCO 口径一致）。
+    if (car_fresh && target_fresh) {
+      const std::string label = skipLabel(d.status);
+      if (!label.empty() && label != last_skip_label_) {
+        last_skip_label_ = label;
+        publishEvidence(evidenceString("CAPTURE_SKIP", label, d));
+      } else if (label.empty()) {
+        last_skip_label_.clear();
+      }
     }
   }
 
   // episode 身份变化 = 新 episode → 复位火控（清冷却 / 在飞）与一次性命中标志。
+  // ADR-0091：复位前若仍有在飞网，先发一条 SHOT_ABORTED reason=episode_reset（唯一结局）。
   void onEpisodeId(int e)
   {
     if (!have_epoch_ || e != current_epoch_) {
+      if (adjudicator_->inFlight()) {
+        const auto t = now();
+        const CaptureDecision ab = adjudicator_->abortInFlight("episode_reset", t.seconds());
+        publishFireControl("SHOT_ABORTED", ab);
+        publishEvidence(evidenceString("SHOT_ABORTED", ab.shot_id, ab));
+      }
       current_epoch_ = e;
       have_epoch_ = true;
       fired_ = false;
@@ -547,6 +329,10 @@ private:
                        " flight_s=" + fmt(d.flight_s) +
                        " miss_dist_m=" + fmt(d.miss_dist) +
                        " h=" + fmt(d.h) + " dist=" + fmt(d.dist);
+    // ADR-0091：中止事件附加 reason / 仿真时刻（追加 token，不破坏既有解析）。
+    if (!d.reason.empty()) {
+      text += " reason=" + d.reason + " t=" + fmt(d.t_event);
+    }
     std_msgs::msg::String m;
     m.data = text;
     fire_ctl_pub_->publish(m);
@@ -555,14 +341,18 @@ private:
   std::string evidenceString(
     const char * kind, const std::string & value, const CaptureDecision & d) const
   {
-    return kind + std::string(" ") + value +
-           " model_id=" + model_id_ +
-           " applicable_min_alt_m=" + fmt(applicableMin_) +
-           " applicable_max_alt_m=" + fmt(applicableMax_) +
-           " h=" + fmt(d.h) + " dist=" + fmt(d.dist) +
-           " shot=" + d.shot_id +
-           " flight_s=" + fmt(d.flight_s) +
-           " miss_dist_m=" + fmt(d.miss_dist);
+    std::string text = kind + std::string(" ") + value +
+                       " model_id=" + model_id_ +
+                       " applicable_min_alt_m=" + fmt(applicableMin_) +
+                       " applicable_max_alt_m=" + fmt(applicableMax_) +
+                       " h=" + fmt(d.h) + " dist=" + fmt(d.dist) +
+                       " shot=" + d.shot_id +
+                       " flight_s=" + fmt(d.flight_s) +
+                       " miss_dist_m=" + fmt(d.miss_dist);
+    if (!d.reason.empty()) {
+      text += " reason=" + d.reason;
+    }
+    return text;
   }
 
   void publishEvidence(const std::string & text)
@@ -598,7 +388,7 @@ private:
   bool fired_{false};
   bool interception_authorized_{false};
   std::string last_skip_label_;
-  std::string model_id_{"net_ballistic_frame_v1"};
+  std::string model_id_{"net_ballistic_frame_v2"};
   std::string jam_model_id_{"behavioral_range_gate"};
   double applicableMin_{0.0}, applicableMax_{2.009};
   double jam_min_{0.0}, jam_max_{2.0}, jam_max_range_{1.0};

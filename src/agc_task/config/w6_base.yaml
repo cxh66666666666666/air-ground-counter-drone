@@ -188,7 +188,8 @@ capture_adjudicator:
     target_pos_alpha: 0.5
     target_max_lead_m: 1.5
     # R-020：模型身份与适用范围标签（W7-b 起为**最小动态火控**口径）
-    model_id: "net_ballistic_frame_v1"
+    # ADR-0091：在飞生命周期与发射资格解耦（模型身份升版）；物理参数不变。
+    model_id: "net_ballistic_frame_v2"
     applicable_min_alt_m: 0.0
     # 上限 ≈ 当前默认点弹道解析顶点 (v0·sinθ)²/(2g) ≈ 2.009 m（占位；未计 t_exp 与网几何）
     applicable_max_alt_m: 2.009
